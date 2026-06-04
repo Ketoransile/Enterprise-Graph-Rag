@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { api } from "@/lib/api-client";
+import { api, API_BASE } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 
 type SearchResult = {
@@ -39,7 +39,7 @@ export default function ChatPage() {
     ]);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/api/v1/chat/stream`, {
+      const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
