@@ -25,12 +25,22 @@ app = FastAPI(title="GraphRAG Backend", version="0.1.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+_origins = list({
+    origin.rstrip("/")
+    for origin in [
+        settings.frontend_app_url,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    if origin
+})
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_app_url, "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
 
