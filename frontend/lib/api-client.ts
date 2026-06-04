@@ -1,7 +1,4 @@
-const apiBaseEnv = (globalThis as any)?.process?.env
-  ?.NEXT_PUBLIC_API_BASE_URL as string | undefined;
-
-const API_BASE: string = apiBaseEnv ?? "http://localhost:8000";
+const API_BASE: string = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 type ApiFetchOptions = RequestInit & { token?: string };
 
