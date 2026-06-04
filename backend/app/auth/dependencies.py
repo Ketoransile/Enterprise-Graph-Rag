@@ -18,6 +18,14 @@ def get_default_tenant_id() -> uuid.UUID:
     return _DEFAULT_TENANT_ID
 
 
+class TenantContext(BaseModel):
+    tenant_id: uuid.UUID
+
+
+def get_tenant_context() -> TenantContext:
+    return TenantContext(tenant_id=_DEFAULT_TENANT_ID)
+
+
 class AuthContext(BaseModel):
     user_id: str
     token: str
