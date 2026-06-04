@@ -1,0 +1,18 @@
+{
+  "name": "graphrag-dev",
+  "private": true,
+  "scripts": {
+    "services": "docker compose up -d postgres neo4j redis",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:worker": "cd backend && celery -A app.workers.celery_app worker --loglevel=info --pool=solo",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "npm-run-all services --parallel dev:backend dev:worker dev:frontend",
+    "dev:nodocker": "npm-run-all --parallel dev:backend dev:worker dev:frontend",
+    "dev:frontend-only": "cd frontend && npm run dev",
+    "dev:mono": "concurrently -n backend,worker,frontend -c blue,yellow,magenta \"cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000\" \"cd backend && celery -A app.workers.celery_app worker --loglevel=info --pool=solo\" \"cd frontend && npm run dev\""
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "concurrently": "^8.2.2"
+  }
+}
