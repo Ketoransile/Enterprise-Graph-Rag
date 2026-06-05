@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import AuthContext, get_current_user, require_roles, get_default_tenant_id
@@ -9,6 +9,7 @@ from app.auth.roles import RoleName
 from app.db.session import get_db
 from app.repositories.chunk import ChunkRepository
 from app.repositories.document import DocumentRepository
+from app.repositories.document_file import DocumentFileRepository
 from app.schemas.chunk import ChunkRead
 from app.schemas.document import DocumentCreate, DocumentRead, DocumentUpdate
 from app.services.chunk_service import ChunkService
@@ -123,10 +124,7 @@ async def list_document_chunks(
     return [ChunkRead.model_validate(c) for c in chunks]
 
 
-from fastapi import UploadFile, File
-import os
-
-@router.post("/{document_id}/upload", tags=["documents"])
+@router.post("/{document_id}/upload", response_model=DocumentRead, tags=["documents"])
 async def upload_document_file(
     document_id: uuid.UUID,
     file: UploadFile = File(...),
@@ -137,24 +135,31 @@ async def upload_document_file(
     doc = await service.get_document(tenant_id=get_default_tenant_id(), document_id=document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-        
-    # Ensure uploads directory exists
-    os.makedirs("uploads", exist_ok=True)
-    file_path = f"uploads/{document_id}_{file.filename}"
-    
-    with open(file_path, "wb") as f:
-        file_bytes = await file.read()
-        f.write(file_bytes)
-        
-    # Update document with storage_path
-    await service.update_document(
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    tenant_id = get_default_tenant_id()
+    await DocumentFileRepository(db).upsert(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        file_name=file.filename or doc.file_name,
+        content_type=file.content_type,
+        file_bytes=file_bytes,
+    )
+
+    storage_path = f"db://document-files/{document_id}"
+    updated = await service.update_document(
         tenant_id=get_default_tenant_id(),
         document_id=document_id,
-        data=DocumentUpdate(storage_path=file_path)
+        data=DocumentUpdate(
+            storage_path=storage_path,
+            processing_status="PENDING",
+        )
     )
-    
-    # Trigger Celery Task
+
     from app.workers.tasks.document_tasks import process_document_task
     process_document_task.delay(str(document_id))
-    
-    return {"message": "Upload successful, ingestion started in background"}
+
+    return DocumentRead.model_validate(updated)

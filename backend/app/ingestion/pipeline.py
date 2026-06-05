@@ -167,6 +167,7 @@ class IngestionPipeline:
                     await session.commit()
                 except Exception as inner_e:
                     logger.error(f"Failed to update document status to FAILED: {inner_e}")
+                raise
 
     def _extract_text(self, file_bytes: bytes, file_type: str) -> str:
         normalized_type = self._normalize_file_type(file_type)

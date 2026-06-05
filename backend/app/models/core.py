@@ -2,7 +2,7 @@ import uuid
 from enum import StrEnum
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -94,6 +94,20 @@ class Document(Base, IdMixin, TenantMixin, TimestampMixin):
     page_count = Column(Integer, nullable=True)
 
     __table_args__ = (UniqueConstraint("tenant_id", "file_name", name="uq_document_file_per_tenant"),)
+
+
+class DocumentFile(Base, IdMixin, TenantMixin, TimestampMixin):
+    __tablename__ = "document_files"
+
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    content_type = Column(String(255), nullable=True)
+    file_size = Column(Integer, nullable=False)
+    file_bytes = Column(LargeBinary, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "document_id", name="uq_document_file_content_per_tenant"),
+    )
 
 
 class DocumentVersion(Base, IdMixin, TenantMixin, TimestampMixin):

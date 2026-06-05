@@ -116,7 +116,7 @@ export default function DocumentsPage() {
       file_name: file.name,
       title: f.title || file.name,
       file_type: inferredType,
-      storage_path: f.storage_path || `/uploads/${file.name}`,
+      storage_path: f.storage_path || `db://pending/${file.name}`,
     }));
   }
 
@@ -125,13 +125,13 @@ export default function DocumentsPage() {
     if (!token) return;
     setSubmitting(true);
     try {
-      const newDoc = await api.documents.create(
+      let newDoc = await api.documents.create(
         {
           title: form.title,
           description: form.description || undefined,
           file_name: form.file_name,
           file_type: form.file_type,
-          storage_path: form.storage_path,
+          storage_path: form.storage_path || `db://pending/${form.file_name}`,
           security_level: form.security_level,
         },
         token,
@@ -140,13 +140,18 @@ export default function DocumentsPage() {
       if (selectedFile) {
         const formData = new FormData();
         formData.append("file", selectedFile);
-        await fetch(`${API_BASE}/api/v1/documents/${newDoc.id}/upload`, {
+        const uploadRes = await fetch(`${API_BASE}/api/v1/documents/${newDoc.id}/upload`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
           },
           body: formData,
         });
+        if (!uploadRes.ok) {
+          const text = await uploadRes.text();
+          throw new Error(text || `Upload failed (${uploadRes.status})`);
+        }
+        newDoc = (await uploadRes.json()) as Document;
       }
       
       setDocuments((prev) => [newDoc, ...prev]);
