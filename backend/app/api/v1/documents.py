@@ -1,4 +1,5 @@
 import uuid
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -89,15 +90,43 @@ async def reprocess_document(
     auth: AuthContext = Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER)),
     db: AsyncSession = Depends(get_db),
 ):
+    tenant_id = get_default_tenant_id()
     service = DocumentService(DocumentRepository(db))
-    doc = await service.get_document(tenant_id=get_default_tenant_id(), document_id=document_id)
+    doc = await service.get_document(tenant_id=tenant_id, document_id=document_id)
     if not doc.storage_path:
         raise HTTPException(status_code=400, detail="Document has no uploaded file to process")
 
+    file_repo = DocumentFileRepository(db)
+    doc_file = await file_repo.get(tenant_id=tenant_id, document_id=document_id)
+    storage_path = doc.storage_path
+
+    if not doc_file:
+        legacy_path = Path(doc.storage_path)
+        if legacy_path.is_file():
+            await file_repo.upsert(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                file_name=doc.file_name,
+                content_type=None,
+                file_bytes=legacy_path.read_bytes(),
+            )
+            storage_path = f"db://document-files/{document_id}"
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The uploaded file is no longer available to the deployed worker. "
+                    "Upload or replace the file before reprocessing this document."
+                ),
+            )
+
     updated = await service.update_document(
-        tenant_id=get_default_tenant_id(),
+        tenant_id=tenant_id,
         document_id=document_id,
-        data=DocumentUpdate(processing_status="PENDING"),
+        data=DocumentUpdate(
+            storage_path=storage_path,
+            processing_status="PENDING",
+        ),
     )
 
     from app.workers.tasks.document_tasks import process_document_task

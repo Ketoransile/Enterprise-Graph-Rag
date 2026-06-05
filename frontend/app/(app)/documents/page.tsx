@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { api, API_BASE, type Document } from "@/lib/api-client";
+import { api, type Document } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 
 interface CreateForm {
@@ -138,20 +138,7 @@ export default function DocumentsPage() {
       );
       
       if (selectedFile) {
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-        const uploadRes = await fetch(`${API_BASE}/api/v1/documents/${newDoc.id}/upload`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        });
-        if (!uploadRes.ok) {
-          const text = await uploadRes.text();
-          throw new Error(text || `Upload failed (${uploadRes.status})`);
-        }
-        newDoc = (await uploadRes.json()) as Document;
+        newDoc = await api.documents.uploadFile(newDoc.id, selectedFile, token);
       }
       
       setDocuments((prev) => [newDoc, ...prev]);

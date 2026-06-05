@@ -14,6 +14,19 @@ export class ApiError extends Error {
   }
 }
 
+function getApiErrorMessage(status: number, text: string): string {
+  if (!text) return `Request failed (${status})`;
+
+  try {
+    const body = JSON.parse(text) as { detail?: unknown };
+    if (typeof body.detail === "string") return body.detail;
+  } catch {
+    // Fall through to the raw body text.
+  }
+
+  return text;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: ApiFetchOptions = {},
@@ -31,7 +44,7 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new ApiError(text || `Request failed (${res.status})`, res.status, text);
+    throw new ApiError(getApiErrorMessage(res.status, text), res.status, text);
   }
 
   if (res.status === 204) return undefined as T;
@@ -236,6 +249,26 @@ export const api = {
         method: "POST",
         token,
       }),
+    uploadFile: async (id: string, file: File, token: string) => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(`${API_BASE}/api/v1/documents/${id}/upload`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new ApiError(getApiErrorMessage(res.status, text), res.status, text);
+      }
+
+      return (await res.json()) as Document;
+    },
     chunks: (id: string, token: string) =>
       apiFetch<Chunk[]>(`/api/v1/documents/${id}/chunks`, { token }),
   },

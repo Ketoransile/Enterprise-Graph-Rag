@@ -30,6 +30,7 @@ export default function DocumentDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -120,6 +121,23 @@ export default function DocumentDetailPage() {
     }
   }
 
+  async function handleFileUpload(file: File | null | undefined) {
+    if (!token || !doc || !file) return;
+    setUploadingFile(true);
+    setError(null);
+    try {
+      const updated = await api.documents.uploadFile(doc.id, file, token);
+      setDoc(updated);
+      setChunks([]);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to upload replacement file",
+      );
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
   if (!token) {
     return (
       <div className="text-center py-12">
@@ -203,11 +221,25 @@ export default function DocumentDetailPage() {
           <button
             type="button"
             onClick={handleReprocess}
-            disabled={reprocessing}
+            disabled={reprocessing || uploadingFile}
             className="mt-2 w-full rounded-md bg-black text-white dark:bg-white dark:text-black px-4 py-2 text-sm font-medium hover:opacity-80 disabled:opacity-50 transition"
           >
             {reprocessing ? "Reprocessing..." : "Reprocess document"}
           </button>
+          <label
+            className={`block ${uploadingFile || reprocessing ? "pointer-events-none opacity-50" : ""}`}
+          >
+            <span className="sr-only">Upload replacement file</span>
+            <input
+              type="file"
+              className="sr-only"
+              disabled={uploadingFile || reprocessing}
+              onChange={(e) => handleFileUpload(e.target.files?.[0])}
+            />
+            <span className="mt-2 inline-flex w-full cursor-pointer items-center justify-center rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-white dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-950">
+              {uploadingFile ? "Uploading..." : "Upload replacement file"}
+            </span>
+          </label>
         </div>
 
         <form
