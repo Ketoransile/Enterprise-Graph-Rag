@@ -1,44 +1,83 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Network, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useTheme } from "next-themes";
 import {
-  RiBarChart2Line,
+  RiBarChartBoxLine,
   RiBook2Line,
-  RiBubbleChartLine,
   RiChat3Line,
+  RiCheckLine,
+  RiCloseLine,
+  RiDatabase2Line,
+  RiGroupLine,
   RiHome5Line,
+  RiLogoutBoxRLine,
+  RiMenuLine,
+  RiMore2Fill,
   RiSettings4Line,
   RiShieldUserLine,
-  RiFileListLine,
-  RiGroupLine,
-  RiLogoutBoxRLine,
+  RiUser3Line,
 } from "react-icons/ri";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { api } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
+import { ChatProvider } from "@/lib/chat-context";
 
-const nav = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+};
+
+type UserProfile = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+  roles: string[];
+};
+
+const workspaceNav: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: <RiHome5Line /> },
   { href: "/documents", label: "Documents", icon: <RiBook2Line /> },
   { href: "/chat", label: "Chat", icon: <RiChat3Line /> },
-  { href: "/graph", label: "Graph", icon: <RiBubbleChartLine /> },
-  { href: "/analytics", label: "Analytics", icon: <RiBarChart2Line /> },
+];
+
+const adminNav: NavItem[] = [
+  { href: "/admin/users", label: "Users", icon: <RiGroupLine /> },
+  { href: "/admin/roles", label: "Roles", icon: <RiShieldUserLine /> },
+  { href: "/analytics", label: "Analytics", icon: <RiBarChartBoxLine /> },
+  { href: "/graph", label: "Graph", icon: <RiDatabase2Line /> },
+];
+
+const systemNav: NavItem[] = [
   { href: "/settings", label: "Settings", icon: <RiSettings4Line /> },
 ];
 
-const adminNav = [
-  { href: "/admin/users", label: "Users", icon: <RiGroupLine /> },
-  { href: "/admin/roles", label: "Roles", icon: <RiShieldUserLine /> },
-  { href: "/audit-logs", label: "Audit Logs", icon: <RiFileListLine /> },
-];
-
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
-
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const { token, ready, clearAuth } = useAuth();
+  const { theme, setTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
 
   useEffect(() => {
     if (ready && !token) {
@@ -46,139 +85,396 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [ready, token, router]);
 
+  useEffect(() => {
+    const saved = localStorage.getItem("sidebar-collapsed");
+    if (saved) setIsCollapsed(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProfile() {
+      if (!token) {
+        setProfile(null);
+        return;
+      }
+
+      try {
+        const nextProfile = await api.auth.me(token);
+        if (!ignore) setProfile(nextProfile);
+      } catch {
+        if (!ignore) setProfile(null);
+      }
+    }
+
+    loadProfile();
+    return () => {
+      ignore = true;
+    };
+  }, [token]);
+
+  const canAccessAdmin = profile?.roles.includes("ADMIN") ?? false;
+  const navGroups = useMemo(
+    () => [
+      { key: "workspace", label: "Workspace", items: workspaceNav },
+      ...(canAccessAdmin ? [{ key: "admin", label: "Admin tools", items: adminNav }] : []),
+      { key: "system", label: "System", items: systemNav },
+    ],
+    [canAccessAdmin],
+  );
+
+  const toggleSidebar = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebar-collapsed", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleLogout = () => {
+    setSignOutDialogOpen(false);
+    clearAuth();
+    router.replace("/login");
+  };
+
+  const isActive = (href: string) => {
+    if (href === "/dashboard" || href === "/chat") return pathname === href;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
+  const renderNavItem = (item: NavItem) => {
+    const active = isActive(item.href);
+    const link = (
+      <Link
+        href={item.href as any}
+        onClick={() => setMobileMenuOpen(false)}
+        className={`group relative flex h-10 items-center rounded-lg text-[14px] transition-colors ${
+          isCollapsed ? "mx-auto w-10 justify-center" : "gap-3 px-3"
+        } ${
+          active
+            ? "bg-neutral-100 text-neutral-950 ring-1 ring-neutral-200 dark:bg-white/[0.075] dark:text-neutral-50 dark:ring-white/[0.06]"
+            : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950 dark:text-neutral-400 dark:hover:bg-white/[0.045] dark:hover:text-neutral-100"
+        }`}
+      >
+        <span
+          className={`grid h-5 w-5 shrink-0 place-items-center text-[18px] ${
+            active
+              ? "text-neutral-950 dark:text-neutral-50"
+              : "text-neutral-500 group-hover:text-neutral-900 dark:text-neutral-500 dark:group-hover:text-neutral-200"
+          }`}
+        >
+          {item.icon}
+        </span>
+        {!isCollapsed && <span className="truncate font-normal">{item.label}</span>}
+      </Link>
+    );
+
+    if (!isCollapsed) return <React.Fragment key={item.href}>{link}</React.Fragment>;
+
+    return (
+      <Tooltip key={item.href} delayDuration={0}>
+        <TooltipTrigger asChild>{link}</TooltipTrigger>
+        <TooltipContent side="right" sideOffset={10}>
+          {item.label}
+        </TooltipContent>
+      </Tooltip>
+    );
+  };
+
   if (!ready || !token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0e1a] text-slate-300">
-        <div className="flex items-center gap-3">
-          <svg className="animate-spin h-5 w-5 text-indigo-400" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-          <span className="text-sm">Loading workspace…</span>
+      <div className="flex h-screen bg-white text-black dark:bg-black dark:text-white">
+        <div className="hidden h-full w-[272px] shrink-0 border-r border-neutral-200 p-4 dark:border-neutral-900 md:block">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-9 w-9 rounded-lg" />
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-2 h-3 w-32" />
+            </div>
+          </div>
+          <div className="mt-8 space-y-3">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <Skeleton key={index} className="h-10 w-full rounded-lg" />
+            ))}
+          </div>
+        </div>
+        <div className="flex-1 p-6 pt-20 md:p-10">
+          <div className="mx-auto flex max-w-7xl flex-col gap-6">
+            <Skeleton className="h-10 w-72" />
+            <Skeleton className="h-4 w-full max-w-xl" />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} className="h-36 rounded-lg" />
+              ))}
+            </div>
+            <Skeleton className="h-80 rounded-lg" />
+          </div>
         </div>
       </div>
     );
   }
 
-  const handleLogout = () => {
-    clearAuth();
-    router.push("/login");
-  };
-
   return (
-    <div className="min-h-screen flex bg-[#0a0e1a]">
-      <aside className="hidden md:flex flex-col w-72 bg-[#0d1225]/80 border-r border-white/[0.04] backdrop-blur-xl">
-        <div className="p-6 flex-1 flex flex-col gap-6">
-          {/* Brand */}
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-400 shadow-lg shadow-indigo-500/20 flex items-center justify-center">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3"/>
-                  <circle cx="19" cy="5" r="2"/>
-                  <circle cx="5" cy="19" r="2"/>
-                  <line x1="14.5" y1="10" x2="17.5" y2="6.5"/>
-                  <line x1="9.5" y1="14" x2="6.5" y2="17.5"/>
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-base font-bold text-white">GraphRAG</h1>
-                <p className="text-xs text-slate-500">Document Intelligence</p>
-              </div>
+    <TooltipProvider>
+      <div className="h-screen overflow-hidden bg-white text-black dark:bg-[#05070d] dark:text-white">
+        <div className="premium-grid pointer-events-none fixed inset-0 z-0 hidden opacity-55 dark:block" />
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-0 hidden h-[520px] bg-[radial-gradient(90%_80%_at_50%_0%,rgba(20,184,166,0.14),rgba(5,7,13,0)_72%)] dark:block" />
+
+        <header className="fixed left-0 right-0 top-0 z-30 flex h-14 items-center justify-between border-b border-neutral-200 bg-white/90 px-4 backdrop-blur-xl dark:border-white/[0.08] dark:bg-transparent md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="-ml-2 grid h-9 w-9 place-items-center rounded-lg text-neutral-600 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-900"
+            aria-label="Open sidebar"
+          >
+            <RiMenuLine className="h-5 w-5" />
+          </button>
+          <span className="text-sm font-semibold">Enterprise Graph Rag</span>
+          <span className="h-9 w-9" />
+        </header>
+
+        {mobileMenuOpen ? (
+          <button
+            type="button"
+            aria-label="Close sidebar"
+            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        ) : null}
+
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-neutral-200 bg-white text-neutral-950 shadow-2xl shadow-black/10 transition-all duration-300 dark:border-white/[0.08] dark:bg-[#05070d]/[0.86] dark:text-white dark:shadow-black/40 dark:backdrop-blur-xl ${
+            isCollapsed ? "md:w-[72px]" : "md:w-[272px]"
+          } ${mobileMenuOpen ? "w-[280px] translate-x-0" : "w-[280px] -translate-x-full md:translate-x-0"}`}
+        >
+          <div className={`shrink-0 px-3 ${isCollapsed ? "py-4" : "pb-5 pt-4"}`}>
+            <div className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between gap-3"}`}>
+              <Link
+                href="/dashboard"
+                className={`flex min-w-0 items-center gap-3 ${isCollapsed ? "justify-center" : ""}`}
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black text-white shadow-sm dark:border dark:border-white/[0.14] dark:bg-white dark:text-black dark:shadow-[0_16px_40px_rgba(255,255,255,0.08)]">
+                  <Network className="h-4 w-4" strokeWidth={2.4} />
+                </span>
+                {!isCollapsed && (
+                  <span className="min-w-0">
+                    <span className="block truncate text-[14px] font-medium text-neutral-950 dark:text-neutral-100">
+                      Enterprise Graph Rag
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] font-normal text-neutral-500">
+                      Knowledge workspace
+                    </span>
+                  </span>
+                )}
+              </Link>
+
+              {!isCollapsed && (
+                <div className="flex shrink-0 items-center gap-1">
+                  <Tooltip delayDuration={0}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={toggleSidebar}
+                        className="hidden h-8 w-8 place-items-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950 dark:hover:bg-white/[0.06] dark:hover:text-neutral-100 md:grid"
+                        aria-label="Collapse sidebar"
+                      >
+                        <PanelLeftClose className="h-[17px] w-[17px]" strokeWidth={1.8} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Collapse sidebar</TooltipContent>
+                  </Tooltip>
+
+                  <button
+                    type="button"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950 dark:hover:bg-white/[0.06] dark:hover:text-white md:hidden"
+                    aria-label="Close sidebar"
+                  >
+                    <RiCloseLine className="h-5 w-5" />
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1.5 border border-emerald-500/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 dot-pulse" />
-              <span className="text-xs font-medium text-emerald-300">
-                Secure workspace
-              </span>
-            </div>
+
+            {isCollapsed && (
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={toggleSidebar}
+                    className="mx-auto mt-4 hidden h-9 w-9 place-items-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950 dark:hover:bg-white/[0.06] dark:hover:text-neutral-100 md:grid"
+                    aria-label="Expand sidebar"
+                  >
+                    <PanelLeftOpen className="h-[17px] w-[17px]" strokeWidth={1.8} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Expand sidebar</TooltipContent>
+              </Tooltip>
+            )}
           </div>
 
-          {/* Main nav */}
-          <nav className="space-y-1 flex-1">
-            <p className="text-xs font-medium text-slate-600 uppercase tracking-wider mb-2 px-3">Main</p>
-            {nav.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href as any}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-                    active
-                      ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                      : "text-slate-400 hover:bg-white/[0.03] hover:text-white border border-transparent"
-                  }`}
-                >
-                  <span className={`text-lg ${active ? "text-indigo-400" : "text-slate-500"}`}>{item.icon}</span>
-                  {item.label}
-                </Link>
-              );
-            })}
-
-            <div className="h-px bg-white/[0.04] my-4" />
-
-            <p className="text-xs font-medium text-slate-600 uppercase tracking-wider mb-2 px-3">Admin</p>
-            {adminNav.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href as any}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-                    active
-                      ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                      : "text-slate-400 hover:bg-white/[0.03] hover:text-white border border-transparent"
-                  }`}
-                >
-                  <span className={`text-lg ${active ? "text-indigo-400" : "text-slate-500"}`}>{item.icon}</span>
-                  {item.label}
-                </Link>
-              );
-            })}
+          <nav className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 ${isCollapsed ? "pt-3" : "pt-1"}`}>
+            <div className={isCollapsed ? "space-y-6" : "space-y-7"}>
+              {navGroups.map((group) => (
+                <section key={group.key}>
+                  {!isCollapsed && (
+                    <h2 className="mb-2.5 px-3 text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-400 dark:text-white/[0.34]">
+                      {group.label}
+                    </h2>
+                  )}
+                  <div className={isCollapsed ? "space-y-2" : "space-y-1.5"}>{group.items.map(renderNavItem)}</div>
+                </section>
+              ))}
+            </div>
           </nav>
 
-          {/* Bottom section */}
-          <div className="space-y-3">
-            <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] p-4">
-              <p className="text-xs font-semibold text-slate-300">Environment</p>
-              <p className="text-xs text-slate-500 mt-1">
-                Local dev · RBAC enforced
-              </p>
-            </div>
-            
-            <Dialog>
-              <DialogTrigger asChild>
-                <button className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 hover:bg-red-500/10 hover:text-red-300 border border-transparent hover:border-red-500/20 transition-all duration-200">
-                  <span className="text-lg"><RiLogoutBoxRLine /></span>
-                  Sign out
+          <div className="shrink-0 border-t border-neutral-200 px-3 py-3 dark:border-white/[0.08]">
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  className={`flex w-full items-center rounded-xl text-left transition hover:bg-neutral-100 dark:hover:bg-white/[0.05] ${
+                    isCollapsed ? "h-10 justify-center" : "gap-2.5 px-2 py-2"
+                  }`}
+                >
+                  <UserAvatar
+                    email={profile?.email ?? "user@example.com"}
+                    name={profile?.full_name ?? null}
+                    avatarUrl={profile?.avatar_url ?? null}
+                  />
+                  {!isCollapsed && (
+                    <>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-neutral-950 dark:text-neutral-100">
+                          {profile?.full_name || profile?.email?.split("@")[0] || "User"}
+                        </span>
+                        <span className="block truncate text-[11px] text-neutral-500">
+                          {profile?.email || "Signed in"}
+                        </span>
+                      </span>
+                      <RiMore2Fill className="h-5 w-5 shrink-0 text-neutral-500" />
+                    </>
+                  )}
                 </button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Confirm Sign Out</DialogTitle>
-                  <DialogDescription>
-                    Are you sure you want to securely sign out of your workspace session?
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter className="mt-4">
-                  <DialogClose asChild>
-                    <button className="px-4 py-2 text-sm rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
-                      Cancel
-                    </button>
-                  </DialogClose>
-                  <button
-                    onClick={handleLogout}
-                    className="px-4 py-2 text-sm rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition border border-red-500/50"
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  side="top"
+                  align={isCollapsed ? "center" : "end"}
+                  sideOffset={10}
+                  className="z-50 min-w-[220px] rounded-xl border border-neutral-200 bg-white p-1 text-neutral-900 shadow-2xl shadow-black/10 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:shadow-black/40"
+                >
+                  <div className="px-3 py-2">
+                    <p className="truncate text-sm font-medium">{profile?.full_name || profile?.email || "Account"}</p>
+                    <p className="truncate text-xs text-neutral-500">{profile?.email}</p>
+                  </div>
+                  <DropdownMenu.Separator className="my-1 h-px bg-neutral-200 dark:bg-neutral-800" />
+                  <div className="px-3 pb-1 pt-2">
+                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">Theme</p>
+                  </div>
+                  {(["light", "dark", "system"] as const).map((mode) => (
+                    <DropdownMenu.Item
+                      key={mode}
+                      onSelect={() => setTheme(mode)}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm capitalize outline-none transition hover:bg-neutral-100 dark:hover:bg-white/[0.06]"
+                    >
+                      <span className="min-w-0 flex-1">{mode}</span>
+                      {theme === mode ? <RiCheckLine className="h-4 w-4 text-neutral-900 dark:text-neutral-100" /> : null}
+                    </DropdownMenu.Item>
+                  ))}
+                  <DropdownMenu.Separator className="my-1 h-px bg-neutral-200 dark:bg-neutral-800" />
+                  <DropdownMenu.Item
+                    onSelect={() => router.push("/settings")}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none transition hover:bg-neutral-100 dark:hover:bg-white/[0.06]"
                   >
-                    Sign out securely
-                  </button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                    <RiSettings4Line className="h-4 w-4" />
+                    Settings
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => setSignOutDialogOpen(true)}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 outline-none transition hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                  >
+                    <RiLogoutBoxRLine className="h-4 w-4" />
+                    Sign out
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
-        </div>
-      </aside>
-      <main className="flex-1 p-6 md:p-8 overflow-auto">{children}</main>
-    </div>
+        </aside>
+
+        <main
+          className={`relative z-10 h-screen bg-white transition-[margin] duration-300 dark:bg-transparent ${
+            isCollapsed ? "md:ml-[72px]" : "md:ml-[272px]"
+          } ${pathname === "/chat" ? "overflow-hidden" : "overflow-auto p-6 pt-20 md:p-10"}`}
+        >
+          {children}
+        </main>
+
+        <Dialog open={signOutDialogOpen} onOpenChange={setSignOutDialogOpen}>
+          <DialogContent className="border-neutral-200 bg-white text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 sm:rounded-lg">
+            <DialogHeader>
+              <DialogTitle className="text-black dark:text-white">Sign out</DialogTitle>
+              <DialogDescription className="text-neutral-500 dark:text-neutral-400">
+                You will need to sign in again to access this workspace.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:space-x-0">
+              <button
+                type="button"
+                onClick={() => setSignOutDialogOpen(false)}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-200 px-4 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-medium text-white transition hover:bg-red-700"
+              >
+                <RiLogoutBoxRLine className="h-4 w-4" />
+                Sign out
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function UserAvatar({
+  email,
+  name,
+  avatarUrl,
+}: {
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+}) {
+  const label = (name || email || "U").trim().slice(0, 1).toUpperCase();
+
+  return (
+    <span className="relative grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-neutral-800 text-xs font-semibold text-neutral-100 ring-1 ring-black/10 dark:ring-white/[0.08]">
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={avatarUrl}
+          alt={name || email}
+          referrerPolicy="no-referrer"
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        label || <RiUser3Line className="h-4 w-4" />
+      )}
+    </span>
+  );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <ChatProvider>
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </ChatProvider>
   );
 }

@@ -1,13 +1,14 @@
 import React from "react";
 import "./globals.css";
-import type { Metadata } from "next";
 import { AuthProvider } from "@/lib/auth-context";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 
-export const metadata: Metadata = {
-  title: "GraphRAG — Enterprise Document Intelligence",
+export const metadata = {
+  title: "GraphRAG - Enterprise Document Intelligence",
   description:
-    "Secure, graph-powered retrieval-augmented generation platform. Ask your documents anything with citations, RBAC, and full audit trails.",
+    "Secure graph-powered retrieval for governed teams. Ask private documents with citations, access control, and audit trails.",
 };
 
 export default function RootLayout({
@@ -16,10 +17,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-[#0a0e1a] text-slate-50 antialiased">
-        <AuthProvider>{children}</AuthProvider>
-        <Toaster />
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen bg-white dark:bg-black text-black dark:text-white antialiased">
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <AuthProvider>{children}</AuthProvider>
+          <Toaster />
+          <SonnerToaster position="top-right" richColors />
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -1,0 +1,3 @@
+from app.core.event_loop import configure_asyncio_event_loop_policy
+
+configure_asyncio_event_loop_policy()

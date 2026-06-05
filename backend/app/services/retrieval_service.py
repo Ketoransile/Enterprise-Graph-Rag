@@ -7,17 +7,17 @@ Retrieval service implementing:
 """
 
 import logging
+import math
+import re
 import uuid
 from typing import Dict, List, Optional
 
-from google import genai
-from google.genai import types
-from sqlalchemy import cast, func, select, text, String
+from sqlalchemy import String, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.core import Chunk, Document, Embedding, SecurityLevel
+from app.models.core import Chunk, Document, Embedding, ProcessingStatus, SecurityLevel
 from app.repositories.role import RoleRepository
 from app.schemas.search import (
     GraphSearchRequest,
@@ -26,6 +26,7 @@ from app.schemas.search import (
     HybridSearchResponse,
     SearchHit,
 )
+from app.services.ai_model_client import AIModelClient
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +55,10 @@ RRF_K = 60  # Reciprocal Rank Fusion constant
 
 class RetrievalService:
     def __init__(self) -> None:
-        if settings.gemini_api_key:
-            self.gemini = genai.Client(api_key=settings.gemini_api_key)
+        if settings.openai_api_key:
+            self.models = AIModelClient()
         else:
-            self.gemini = None
+            self.models = None
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -69,9 +70,6 @@ class RetrievalService:
         user_id: str,
     ) -> HybridSearchResponse:
         """Run vector + BM25 search, fuse with RRF, then apply RBAC filter."""
-        if not self.gemini:
-            logger.warning("No Gemini API key – returning empty results.")
-            return HybridSearchResponse(hits=[])
 
         top_k = request.top_k or 10
         final_limit = request.limit or 5
@@ -80,25 +78,8 @@ class RetrievalService:
             # 1. Get user's max allowed security level
             max_security = await self._resolve_max_security(tenant_id, user_id)
 
-            # 2. Embed the query
-            embed_resp = self.gemini.models.embed_content(
-                model="gemini-embedding-2",
-                contents=request.query,
-                config=types.EmbedContentConfig(output_dimensionality=768),
-            )
-            query_embedding = embed_resp.embeddings[0].values
-
             async with SessionLocal() as session:
-                # 3. Vector search
-                vector_hits = await self._vector_search(
-                    session,
-                    query_embedding=query_embedding,
-                    tenant_id=tenant_id,
-                    top_k=top_k,
-                    document_ids=request.document_ids,
-                )
-
-                # 4. BM25 keyword search
+                # 2. BM25 keyword search does not depend on model-provider embeddings.
                 bm25_hits = await self._bm25_search(
                     session,
                     query=request.query,
@@ -106,11 +87,52 @@ class RetrievalService:
                     top_k=top_k,
                     document_ids=request.document_ids,
                 )
+                if not bm25_hits:
+                    bm25_hits = await self._keyword_search(
+                        session,
+                        query=request.query,
+                        tenant_id=tenant_id,
+                        top_k=top_k,
+                        document_ids=request.document_ids,
+                    )
 
-            # 5. Reciprocal Rank Fusion
-            fused = self._reciprocal_rank_fusion(vector_hits, bm25_hits)
+                # 3. Vector search is best-effort because some OpenAI-compatible
+                # providers expose /v1/responses but not /v1/embeddings.
+                vector_hits: List[SearchHit] = []
+                if self.models and settings.openai_embeddings_enabled:
+                    try:
+                        query_embedding = (await self.models.embed(request.query))[0]
+                        vector_hits = await self._vector_search(
+                            session,
+                            query_embedding=query_embedding,
+                            tenant_id=tenant_id,
+                            top_k=top_k,
+                            document_ids=request.document_ids,
+                        )
+                    except Exception as embed_err:
+                        logger.warning(
+                            "Vector search skipped because embeddings are unavailable: %s",
+                            embed_err,
+                        )
+                else:
+                    logger.info("Embeddings disabled or unavailable - using BM25 retrieval only.")
 
-            # 6. RBAC security filter (drop chunks the user cannot see)
+            # 4. Reciprocal Rank Fusion when vector results exist; otherwise keep BM25 ranking.
+            fused = (
+                self._reciprocal_rank_fusion(vector_hits, bm25_hits)
+                if vector_hits
+                else bm25_hits
+            )
+            if not fused:
+                async with SessionLocal() as session:
+                    fused = await self._recent_document_chunks(
+                        session,
+                        tenant_id=tenant_id,
+                        top_k=top_k,
+                        document_ids=request.document_ids,
+                    )
+
+            # 5. RBAC security filter (drop chunks the user cannot see)
             filtered = self._security_filter(fused, max_security)
 
             return HybridSearchResponse(hits=filtered[:final_limit])
@@ -143,10 +165,14 @@ class RetrievalService:
         stmt = (
             select(
                 Chunk,
+                Document,
                 Embedding.embedding.cosine_distance(query_embedding).label("distance"),
             )
             .join(Embedding, Chunk.id == Embedding.chunk_id)
+            .join(Document, Chunk.document_id == Document.id)
             .where(Chunk.tenant_id == tenant_id)
+            .where(Document.tenant_id == tenant_id)
+            .where(Document.processing_status == ProcessingStatus.COMPLETED)
             .order_by("distance")
             .limit(top_k)
         )
@@ -155,7 +181,7 @@ class RetrievalService:
 
         result = await session.execute(stmt)
         hits: List[SearchHit] = []
-        for chunk, distance in result:
+        for chunk, document, distance in result:
             hits.append(
                 SearchHit(
                     chunk_id=str(chunk.id),
@@ -168,10 +194,170 @@ class RetrievalService:
                         "security_level": chunk.security_level.value
                         if chunk.security_level
                         else "INTERNAL",
+                        "document_title": document.title,
+                        "file_name": document.file_name,
                     },
                 )
             )
         return hits
+
+    async def _keyword_search(
+        self,
+        session: AsyncSession,
+        *,
+        query: str,
+        tenant_id: str,
+        top_k: int,
+        document_ids: Optional[List[str]] = None,
+    ) -> List[SearchHit]:
+        """Fallback lexical search using OR matching when PostgreSQL FTS is too strict."""
+        terms = self._query_terms(query)
+        if not terms:
+            return []
+
+        conditions = [Chunk.chunk_text.ilike(f"%{term}%") for term in terms]
+        stmt = (
+            select(Chunk, Document)
+            .join(Document, Chunk.document_id == Document.id)
+            .where(Chunk.tenant_id == tenant_id)
+            .where(Document.tenant_id == tenant_id)
+            .where(Document.processing_status == ProcessingStatus.COMPLETED)
+            .where(or_(*conditions))
+            .order_by(Chunk.updated_at.desc())
+            .limit(top_k * 3)
+        )
+        if document_ids:
+            stmt = stmt.where(Chunk.document_id.in_(document_ids))
+
+        result = await session.execute(stmt)
+        rows = result.all()
+        scored: List[SearchHit] = []
+        for chunk, document in rows:
+            chunk_text = chunk.chunk_text or ""
+            lower_text = chunk_text.lower()
+            matches = sum(1 for term in terms if term in lower_text)
+            if matches == 0:
+                continue
+            scored.append(
+                SearchHit(
+                    chunk_id=str(chunk.id),
+                    document_id=str(chunk.document_id),
+                    text=chunk_text,
+                    score=matches / len(terms),
+                    source_type="keyword",
+                    metadata={
+                        "page_number": chunk.page_number,
+                        "security_level": chunk.security_level.value
+                        if chunk.security_level
+                        else "INTERNAL",
+                        "document_title": document.title,
+                        "file_name": document.file_name,
+                    },
+                )
+            )
+
+        return sorted(scored, key=lambda hit: hit.score, reverse=True)[:top_k]
+
+    async def _recent_document_chunks(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: str,
+        top_k: int,
+        document_ids: Optional[List[str]] = None,
+    ) -> List[SearchHit]:
+        """Last-resort context for broad prompts like "summarize my uploaded PDFs"."""
+        doc_stmt = (
+            select(Document)
+            .where(Document.tenant_id == tenant_id)
+            .where(Document.processing_status == ProcessingStatus.COMPLETED)
+            .order_by(Document.created_at.desc())
+            .limit(top_k)
+        )
+        if document_ids:
+            doc_stmt = doc_stmt.where(Document.id.in_(document_ids))
+
+        doc_result = await session.execute(doc_stmt)
+        documents = doc_result.scalars().all()
+        if not documents:
+            return []
+
+        per_document_limit = max(1, math.ceil(top_k / len(documents)))
+        chunks_by_document: List[tuple[Document, list[Chunk]]] = []
+
+        for document in documents:
+            chunk_stmt = (
+                select(Chunk)
+                .where(Chunk.tenant_id == tenant_id)
+                .where(Chunk.document_id == document.id)
+                .order_by(Chunk.chunk_index.asc())
+                .limit(per_document_limit)
+            )
+            chunk_result = await session.execute(chunk_stmt)
+            chunks_by_document.append((document, list(chunk_result.scalars().all())))
+
+        hits: List[SearchHit] = []
+        for chunk_index in range(per_document_limit):
+            for document, chunks in chunks_by_document:
+                if chunk_index >= len(chunks):
+                    continue
+                chunk = chunks[chunk_index]
+                hits.append(
+                    SearchHit(
+                        chunk_id=str(chunk.id),
+                        document_id=str(chunk.document_id),
+                        text=chunk.chunk_text,
+                        score=max(0.01, 1.0 - (len(hits) * 0.01)),
+                        source_type="recent",
+                        metadata={
+                            "page_number": chunk.page_number,
+                            "security_level": chunk.security_level.value
+                            if chunk.security_level
+                            else "INTERNAL",
+                            "document_title": document.title,
+                            "file_name": document.file_name,
+                        },
+                    )
+                )
+                if len(hits) >= top_k:
+                    return hits
+
+        return hits
+
+    @staticmethod
+    def _query_terms(query: str) -> List[str]:
+        stop_words = {
+            "about",
+            "answer",
+            "document",
+            "documents",
+            "file",
+            "files",
+            "from",
+            "give",
+            "have",
+            "just",
+            "know",
+            "latest",
+            "more",
+            "tell",
+            "this",
+            "that",
+            "what",
+            "when",
+            "where",
+            "which",
+            "with",
+            "uploaded",
+            "summarize",
+            "summary",
+        }
+        terms = [
+            term
+            for term in re.findall(r"[a-zA-Z0-9]{3,}", query.lower())
+            if term not in stop_words
+        ]
+        return terms[:8]
 
     # ── BM25 Full-Text Search ─────────────────────────────────────────────
 
@@ -194,8 +380,11 @@ class RetrievalService:
         rank = func.ts_rank_cd(ts_vector, ts_query)
 
         stmt = (
-            select(Chunk, rank.label("bm25_score"))
+            select(Chunk, Document, rank.label("bm25_score"))
+            .join(Document, Chunk.document_id == Document.id)
             .where(Chunk.tenant_id == tenant_id)
+            .where(Document.tenant_id == tenant_id)
+            .where(Document.processing_status == ProcessingStatus.COMPLETED)
             .where(ts_vector.op("@@")(ts_query))
             .order_by(rank.desc())
             .limit(top_k)
@@ -205,7 +394,7 @@ class RetrievalService:
 
         result = await session.execute(stmt)
         hits: List[SearchHit] = []
-        for chunk, bm25_score in result:
+        for chunk, document, bm25_score in result:
             hits.append(
                 SearchHit(
                     chunk_id=str(chunk.id),
@@ -218,6 +407,8 @@ class RetrievalService:
                         "security_level": chunk.security_level.value
                         if chunk.security_level
                         else "INTERNAL",
+                        "document_title": document.title,
+                        "file_name": document.file_name,
                     },
                 )
             )
@@ -288,14 +479,21 @@ class RetrievalService:
         """
         async with SessionLocal() as session:
             repo = RoleRepository(session)
+            t_id = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(str(tenant_id))
+            u_id = user_id if isinstance(user_id, uuid.UUID) else uuid.UUID(str(user_id))
+
             roles = await repo.list_roles_for_user(
-                tenant_id=uuid.UUID(tenant_id),
-                user_id=uuid.UUID(user_id),
+                tenant_id=t_id,
+                user_id=u_id,
             )
             role_names = [r.name for r in roles]
 
         if not role_names:
-            return "PUBLIC"  # safest default
+            logger.info(
+                "User %s has no assigned roles; defaulting retrieval clearance to USER/INTERNAL.",
+                user_id,
+            )
+            return ROLE_MAX_SECURITY["USER"]
 
         max_level = "PUBLIC"
         for rn in role_names:

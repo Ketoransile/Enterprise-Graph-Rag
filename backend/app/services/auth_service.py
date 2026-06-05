@@ -98,6 +98,7 @@ class AuthService:
             "id": str(user.id),
             "email": user.email,
             "full_name": user.full_name,
+            "avatar_url": user.avatar_url,
             "roles": assigned_roles,
             "temporary_password": temp_password,
         }
@@ -113,11 +114,82 @@ class AuthService:
                 "id": str(u.id),
                 "email": u.email,
                 "full_name": u.full_name,
+                "avatar_url": u.avatar_url,
                 "is_active": u.is_active,
                 "roles": role_names,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             })
         return result
+
+    async def list_roles(self, *, tenant_id: uuid.UUID) -> List[dict]:
+        roles = await self.roles.list_roles(tenant_id=tenant_id)
+        counts = await self.roles.count_users_by_role(tenant_id=tenant_id)
+        return [
+            {
+                "id": str(role.id),
+                "name": role.name,
+                "description": role.description,
+                "user_count": counts.get(role.id, 0),
+                "created_at": role.created_at.isoformat() if role.created_at else None,
+            }
+            for role in roles
+        ]
+
+    async def create_role(self, *, tenant_id: uuid.UUID, name: str, description: str | None) -> dict:
+        role_name = name.strip().upper()
+        if not role_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role name is required")
+
+        existing = await self.roles.get_role_by_name(tenant_id=tenant_id, name=role_name)
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Role already exists")
+
+        role = await self.roles.create_role(tenant_id=tenant_id, name=role_name, description=description)
+        return {
+            "id": str(role.id),
+            "name": role.name,
+            "description": role.description,
+            "user_count": 0,
+            "created_at": role.created_at.isoformat() if role.created_at else None,
+        }
+
+    async def update_role(self, *, tenant_id: uuid.UUID, name: str, description: str | None) -> dict:
+        role_name = name.strip().upper()
+        role = await self.roles.update_role(tenant_id=tenant_id, name=role_name, description=description)
+        if not role:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+
+        counts = await self.roles.count_users_by_role(tenant_id=tenant_id)
+        return {
+            "id": str(role.id),
+            "name": role.name,
+            "description": role.description,
+            "user_count": counts.get(role.id, 0),
+            "created_at": role.created_at.isoformat() if role.created_at else None,
+        }
+
+    async def set_user_status(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, is_active: bool
+    ) -> dict:
+        user = await self.users.update_status(user_id=user_id, tenant_id=tenant_id, is_active=is_active)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        return await self._user_to_list_item(user=user, tenant_id=tenant_id)
+
+    async def replace_user_roles(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, roles: list[str]
+    ) -> dict:
+        user = await self.users.get_by_id_and_tenant(user_id=user_id, tenant_id=tenant_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        role_names = sorted({role.strip().upper() for role in roles if role.strip()})
+        if not role_names:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one role is required")
+
+        await self.user_roles.remove_roles_for_user(user_id=user_id, tenant_id=tenant_id)
+        await self._ensure_roles(user_id=user_id, tenant_id=tenant_id, roles=role_names)
+        return await self._user_to_list_item(user=user, tenant_id=tenant_id)
 
     async def _ensure_roles(
         self, *, user_id: uuid.UUID, tenant_id: uuid.UUID, roles: list[str]
@@ -131,11 +203,25 @@ class AuthService:
             except Exception:
                 pass
 
+    async def _user_to_list_item(self, *, user, tenant_id: uuid.UUID) -> dict:
+        roles = await self.roles.list_roles_for_user(tenant_id=tenant_id, user_id=user.id)
+        role_names = [r.name for r in roles]
+        return {
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "avatar_url": user.avatar_url,
+            "is_active": user.is_active,
+            "roles": role_names,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        }
+
     async def get_or_create_oauth_user(
         self,
         *,
         email: str,
         full_name: str | None,
+        avatar_url: str | None,
         tenant_id: uuid.UUID,
     ) -> str:
         user = await self.users.get_by_email_and_tenant(email=email, tenant_id=tenant_id)
@@ -155,6 +241,7 @@ class AuthService:
             user = await self.users.create_user(
                 email=email,
                 full_name=full_name,
+                avatar_url=avatar_url,
                 hashed_password=hashed,
                 tenant_id=tenant_id,
             )
@@ -164,6 +251,17 @@ class AuthService:
                 tenant_id=tenant_id,
                 roles=["USER", "ADMIN"] if wants_admin else ["USER"],
             )
+        else:
+            profile_changed = (full_name and full_name != user.full_name) or (
+                avatar_url and avatar_url != user.avatar_url
+            )
+            if profile_changed:
+                user = await self.users.update_profile(
+                    user_id=user.id,
+                    tenant_id=tenant_id,
+                    full_name=full_name,
+                    avatar_url=avatar_url,
+                ) or user
 
         token = create_access_token(
             subject=str(user.id),

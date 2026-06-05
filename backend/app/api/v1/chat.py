@@ -7,19 +7,18 @@ from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from google import genai
-from google.genai import types
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import AuthContext, get_current_user, get_default_tenant_id
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.repositories.audit_log import AuditLogRepository
 from app.schemas.search import HybridSearchRequest
+from app.services.ai_model_client import AIModelClient
 from app.services.audit_service import AuditService
 from app.services.evaluation_service import EvaluationService
 from app.services.retrieval_service import RetrievalService
-from app.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +33,13 @@ async def chat_stream(
     auth: AuthContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not settings.gemini_api_key:
-        raise HTTPException(status_code=500, detail="Gemini API key not configured")
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="AI model API key not configured. Set OPENAI_API_KEY.",
+        )
 
-    client = genai.Client(api_key=settings.gemini_api_key)
+    client = AIModelClient()
     retrieval_service = RetrievalService()
 
     async def event_generator() -> AsyncGenerator[str, None]:
@@ -68,9 +70,15 @@ async def chat_stream(
             yield f"data: {json.dumps({'type': 'citations', 'data': citations_data})}\n\n"
 
             # 3. Assemble Prompt
-            context_text = "\n\n".join(
-                [f"Source [{i+1}]: {hit.text}" for i, hit in enumerate(search_res.hits)]
-            )
+            context_lines = []
+            for i, hit in enumerate(search_res.hits):
+                metadata = hit.metadata or {}
+                source_name = metadata.get("document_title") or metadata.get("file_name")
+                source_label = f"Source [{i+1}]"
+                if source_name:
+                    source_label += f" ({source_name})"
+                context_lines.append(f"{source_label}: {hit.text}")
+            context_text = "\n\n".join(context_lines)
             system_prompt = (
                 "You are an enterprise AI assistant answering questions based strictly on the provided context.\n"
                 "If the context does not contain the answer, politely say so. Do not hallucinate external information.\n"
@@ -79,18 +87,18 @@ async def chat_stream(
             user_prompt = f"Context:\n{context_text}\n\nQuestion: {payload.query}"
 
             # 4. Stream LLM Response
-            stream = await client.aio.models.generate_content_stream(
-                model="gemini-2.5-flash",
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt, temperature=0.0
-                ),
+            stream = client.stream_chat_completion(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.0,
             )
 
-            async for chunk in stream:
-                if chunk.text:
-                    full_response += chunk.text
-                    yield f"data: {json.dumps({'type': 'chunk', 'text': chunk.text})}\n\n"
+            async for chunk_text in stream:
+                if chunk_text:
+                    full_response += chunk_text
+                    yield f"data: {json.dumps({'type': 'chunk', 'text': chunk_text})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

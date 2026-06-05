@@ -1,479 +1,506 @@
 import Link from "next/link";
+import {
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  Database,
+  FileCheck2,
+  FileText,
+  LockKeyhole,
+  Network,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  UploadCloud,
+} from "lucide-react";
 
-/* ──────────────────────────────────────────────────────────
-   GraphRAG — Premium Landing Page
-   ────────────────────────────────────────────────────────── */
+import { BrandMark } from "@/components/marketing/BrandMark";
 
-const features = [
+const capabilities = [
   {
-    title: "Document Intelligence",
-    desc: "Upload PDFs, DOCX, TXT, and Markdown. We extract, chunk semantically, and embed — preserving full provenance so every answer traces to its source.",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-    ),
-    gradient: "from-indigo-500 to-cyan-400",
+    title: "Grounded answers",
+    description:
+      "Responses are assembled from approved source passages with citations your team can inspect.",
+    icon: FileCheck2,
   },
   {
-    title: "Hybrid Retrieval",
-    desc: "BM25 keyword search + vector embeddings + knowledge graph traversal — combined with reranking for precision and recall on every question.",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    ),
-    gradient: "from-violet-500 to-pink-400",
+    title: "Hybrid retrieval",
+    description:
+      "Keyword recall, semantic search, and graph relationships work together for better context.",
+    icon: Search,
   },
   {
-    title: "Pre-LLM Guardrails",
-    desc: "RBAC and document sensitivity checks execute before context ever reaches the model. Unauthorized content never enters the prompt window.",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-    ),
-    gradient: "from-emerald-500 to-teal-400",
+    title: "Pre-LLM permissions",
+    description:
+      "Role and sensitivity checks run before document context ever reaches the model.",
+    icon: LockKeyhole,
   },
   {
-    title: "Knowledge Graph",
-    desc: "Automatically extract entities and relationships from documents. Explore connections between people, projects, policies, and technologies.",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="14.5" y1="10" x2="17.5" y2="6.5"/><line x1="9.5" y1="10" x2="6.5" y2="6.5"/><line x1="9.5" y1="14" x2="6.5" y2="17.5"/><line x1="14.5" y1="14" x2="17.5" y2="17.5"/></svg>
-    ),
-    gradient: "from-amber-500 to-orange-400",
+    title: "Document pipeline",
+    description:
+      "Ingest PDFs, DOCX, text, and Markdown with parsing, chunking, embeddings, and lineage.",
+    icon: UploadCloud,
   },
   {
-    title: "Streaming Chat",
-    desc: "Ask questions in natural language. Get real-time streamed answers with inline citations that link back to specific source passages.",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-    ),
-    gradient: "from-blue-500 to-indigo-400",
+    title: "Knowledge graph",
+    description:
+      "Extract entities and relationships so teams can reason across people, policies, and projects.",
+    icon: Network,
   },
   {
-    title: "Audit & Compliance",
-    desc: "Every query, access attempt, and mutation is logged with user identity, timestamps, and status. Full accountability for enterprise compliance.",
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-    ),
-    gradient: "from-rose-500 to-pink-400",
+    title: "Audit readiness",
+    description:
+      "Every query, access decision, upload, and mutation is logged for operational review.",
+    icon: ShieldCheck,
   },
 ];
 
-const pipeline = [
-  { step: "Upload", desc: "Drag & drop files", num: "01" },
-  { step: "Extract", desc: "Parse raw text", num: "02" },
-  { step: "Chunk", desc: "Semantic splitting", num: "03" },
-  { step: "Embed", desc: "Vector encoding", num: "04" },
-  { step: "Graph", desc: "Entity extraction", num: "05" },
-  { step: "Answer", desc: "Grounded output", num: "06" },
+const workflow = [
+  {
+    step: "01",
+    title: "Register content",
+    description: "Upload source material and assign the right sensitivity level.",
+  },
+  {
+    step: "02",
+    title: "Build context",
+    description: "Parse, chunk, embed, and connect entities in the graph.",
+  },
+  {
+    step: "03",
+    title: "Ask safely",
+    description: "Retrieve only permitted context before the model sees a token.",
+  },
+  {
+    step: "04",
+    title: "Review outcomes",
+    description: "Trace citations, quality scores, access checks, and audit events.",
+  },
 ];
 
-const auditRows = [
-  { user: "alice@acme.co", action: "QUERY", status: "ALLOWED", color: "text-emerald-400", bg: "bg-emerald-400/10" },
-  { user: "hr-bot", action: "EMBED", status: "ALLOWED", color: "text-emerald-400", bg: "bg-emerald-400/10" },
-  { user: "guest", action: "QUERY", status: "BLOCKED", color: "text-amber-400", bg: "bg-amber-400/10" },
-  { user: "svc-pipeline", action: "GRAPH", status: "ALLOWED", color: "text-emerald-400", bg: "bg-emerald-400/10" },
-  { user: "external", action: "DOWNLOAD", status: "DENIED", color: "text-red-400", bg: "bg-red-400/10" },
-];
-
-const stats = [
-  { label: "Latency p95", value: "412ms", sub: "end-to-end" },
-  { label: "Guardrail pass", value: "99.2%", sub: "all queries" },
-  { label: "Faithfulness", value: "≥ 0.85", sub: "target score" },
-  { label: "Context recall", value: "≥ 0.75", sub: "target score" },
+const proofPoints = [
+  "Citations by default",
+  "RBAC before retrieval",
+  "Hybrid search stack",
+  "Self-hostable architecture",
 ];
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#0a0e1a] text-white overflow-hidden relative">
-      {/* ── Animated background orbs ── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
-        <div className="orb orb-4" />
-        <div className="orb orb-5" />
-      </div>
+    <div className="relative min-h-screen overflow-hidden bg-[#05070d] text-white">
+      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,#05070d_0%,#090b10_44%,#05070d_100%)]" />
+      <div className="premium-grid pointer-events-none fixed inset-0 opacity-60" />
+      <div className="pointer-events-none fixed inset-x-0 top-0 h-[680px] bg-[radial-gradient(90%_80%_at_50%_0%,rgba(20,184,166,0.18),rgba(5,7,13,0)_70%)]" />
 
-      {/* ── Subtle grid overlay ── */}
-      <div className="fixed inset-0 pointer-events-none opacity-[0.03]"
-        style={{
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-          backgroundSize: '60px 60px',
-        }}
-      />
+      <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-transparent backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-6 lg:px-8">
+          <BrandMark />
 
-      {/* ── Navigation ── */}
-      <header className="sticky top-0 z-50 glass-strong" id="nav-header">
-        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-400 shadow-lg shadow-indigo-500/25 flex items-center justify-center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <circle cx="19" cy="5" r="2"/>
-                <circle cx="5" cy="19" r="2"/>
-                <line x1="14.5" y1="10" x2="17.5" y2="6.5"/>
-                <line x1="9.5" y1="14" x2="6.5" y2="17.5"/>
-              </svg>
-            </div>
-            <Link href="/" className="text-lg font-bold tracking-tight">
-              GraphRAG
-            </Link>
-          </div>
-
-          <nav className="hidden md:flex items-center gap-8 text-sm text-slate-300">
-            <Link href="#features" className="hover:text-white transition-colors duration-200">Features</Link>
-            <Link href="#pipeline" className="hover:text-white transition-colors duration-200">Pipeline</Link>
-            <Link href="#security" className="hover:text-white transition-colors duration-200">Security</Link>
+          <nav className="hidden items-center gap-8 text-sm font-medium text-white/60 md:flex">
+            <a className="transition hover:text-white" href="#product">
+              Product
+            </a>
+            <a className="transition hover:text-white" href="#workflow">
+              Workflow
+            </a>
+            <a className="transition hover:text-white" href="#security">
+              Security
+            </a>
           </nav>
 
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-3">
             <Link
               href="/login"
-              className="text-slate-300 hover:text-white transition-colors duration-200 hidden sm:inline-flex"
+              className="hidden text-sm font-medium text-white/[0.64] transition hover:text-white sm:inline-flex"
             >
               Sign in
             </Link>
             <Link
-              href="/login"
-              className="btn-primary !py-2 !px-5 text-sm !rounded-lg inline-flex items-center gap-2"
+              href="/register"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-black transition hover:bg-white/90"
             >
               Get started
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </Link>
           </div>
         </div>
       </header>
 
       <main className="relative z-10">
-        {/* ════════════════════════════════════════════════
-            HERO SECTION
-           ════════════════════════════════════════════════ */}
-        <section className="mx-auto max-w-7xl px-6 pt-20 pb-24 lg:pt-32 lg:pb-32">
-          <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-16 items-center">
-            {/* Left: Copy */}
-            <div className="space-y-8">
-              {/* Badge */}
-              <div className="animate-fade-in-up inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-4 py-1.5 text-xs font-medium text-indigo-200 backdrop-blur-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 dot-pulse" />
-                Enterprise-ready · Graph-native · Audit-first
-              </div>
-
-              {/* Headline */}
-              <div className="space-y-5 animate-fade-in-up animate-delay-100">
-                <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-[1.05] tracking-tight">
-                  Ask your docs.{" "}
-                  <span className="gradient-text">
-                    Trust the answer.
-                  </span>
-                </h1>
-                <p className="text-lg lg:text-xl text-slate-300/90 max-w-xl leading-relaxed font-light">
-                  GraphRAG unifies vector search, keyword matching, and knowledge graph traversal into one secure retrieval layer — with citations, RBAC, and full audit trails.
-                </p>
-              </div>
-
-              {/* CTAs */}
-              <div className="flex flex-wrap items-center gap-4 animate-fade-in-up animate-delay-200">
-                <Link
-                  href="/login"
-                  className="btn-primary text-sm inline-flex items-center gap-2"
-                >
-                  Start now — free
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                </Link>
-                <Link
-                  href="#pipeline"
-                  className="btn-secondary text-sm inline-flex items-center gap-2"
-                >
-                  See how it works
-                </Link>
-              </div>
-
-              {/* Trust indicators */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-in-up animate-delay-300">
-                {["RBAC before LLM", "Full audit trail", "Hybrid search", "Graph lineage"].map((item) => (
-                  <div key={item} className="glass-card rounded-lg px-3 py-2.5 text-center text-xs text-slate-300 font-medium">
-                    {item}
-                  </div>
-                ))}
-              </div>
+        <section className="mx-auto max-w-7xl px-5 pb-16 pt-20 sm:px-6 sm:pb-20 sm:pt-24 lg:px-8">
+          <div className="mx-auto max-w-4xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-md border border-teal-300/20 bg-teal-300/[0.08] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-teal-100/80">
+              <Sparkles className="h-3.5 w-3.5" />
+              Secure GraphRAG for serious teams
             </div>
 
-            {/* Right: Live dashboard card */}
-            <div className="animate-fade-in-up animate-delay-300">
-              <div className="glass-card rounded-2xl p-6 lg:p-8 animate-pulse-glow">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-5">
-                  <span className="text-sm font-medium text-slate-300">System posture</span>
-                  <span className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 dot-pulse" />
-                    All systems healthy
-                  </span>
-                </div>
-
-                {/* Pipeline stages */}
-                <div className="space-y-2.5">
-                  {["Ingestion", "Chunking", "Embeddings", "Graph Extract", "Search", "Answering"].map((stage, i) => (
-                    <div key={stage} className="flex items-center gap-3 rounded-xl border border-white/[0.04] bg-white/[0.02] px-4 py-3 transition-all duration-300 hover:bg-white/[0.04] hover:border-white/[0.08]">
-                      <div className={`h-2.5 w-2.5 rounded-full ${i % 2 === 0 ? "bg-emerald-400 dot-pulse" : "bg-slate-500"}`} />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-white">{stage}</p>
-                        <p className="text-xs text-slate-500">{i % 2 === 0 ? "Active" : "Standby"}</p>
-                      </div>
-                      <span className={`text-xs font-semibold ${i % 2 === 0 ? "text-emerald-400" : "text-slate-500"}`}>
-                        {i % 2 === 0 ? "OK" : "IDLE"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Stats */}
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] px-4 py-3">
-                    <p className="text-xs text-slate-500 mb-1">Latency p95</p>
-                    <p className="text-xl font-bold gradient-text">412ms</p>
-                  </div>
-                  <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] px-4 py-3">
-                    <p className="text-xs text-slate-500 mb-1">Guardrail pass</p>
-                    <p className="text-xl font-bold text-emerald-400">99.2%</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Social proof bar ── */}
-        <section className="mx-auto max-w-7xl px-6 pb-16">
-          <div className="glass-card rounded-2xl px-8 py-5 flex flex-wrap items-center justify-center gap-6 text-sm animate-fade-in-up animate-delay-400">
-            <span className="uppercase tracking-[0.2em] text-xs text-slate-500 font-medium">Built for teams who care about</span>
-            {["Compliance", "Latency", "Traceability", "LLM Safety"].map((w) => (
-              <span key={w} className="font-semibold text-white/90">{w}</span>
-            ))}
-          </div>
-        </section>
-
-        {/* ════════════════════════════════════════════════
-            FEATURES SECTION
-           ════════════════════════════════════════════════ */}
-        <section id="features" className="mx-auto max-w-7xl px-6 pb-28">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <p className="text-sm uppercase tracking-[0.25em] text-indigo-300/70 font-medium mb-4">Capabilities</p>
-            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-5">
-              Everything you need.{" "}
-              <span className="gradient-text">Nothing you don&apos;t.</span>
-            </h2>
-            <p className="text-lg text-slate-400 max-w-2xl mx-auto font-light">
-              A complete graph-augmented retrieval stack — from document ingestion to cited answers, with enterprise security at every layer.
+            <h1 className="mt-7 text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl">
+              Turn private knowledge into answers your team can verify.
+            </h1>
+            <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-white/[0.64] sm:text-lg">
+              GraphRAG combines hybrid retrieval, knowledge graphs, citations,
+              access control, and audit trails so critical documents can be
+              queried with confidence.
             </p>
-          </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {features.map((f, idx) => (
-              <div
-                key={f.title}
-                className={`glass-card rounded-2xl p-7 group animate-fade-in-up animate-delay-${(idx + 1) * 100}`}
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href="/register"
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white px-5 text-sm font-semibold text-black transition hover:bg-white/90 sm:w-auto"
               >
-                <div className={`mb-5 h-12 w-12 rounded-xl bg-gradient-to-br ${f.gradient} flex items-center justify-center text-white shadow-lg transition-transform duration-300 group-hover:scale-110`}>
-                  {f.icon}
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">{f.title}</h3>
-                <p className="text-sm text-slate-400 leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ════════════════════════════════════════════════
-            PIPELINE SECTION
-           ════════════════════════════════════════════════ */}
-        <section id="pipeline" className="mx-auto max-w-7xl px-6 pb-28">
-          <div className="glass-card rounded-3xl p-8 md:p-12 animate-fade-in-up">
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-12">
-              <div>
-                <p className="text-sm uppercase tracking-[0.25em] text-indigo-300/70 font-medium mb-3">Pipeline</p>
-                <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-                  From upload to answer.{" "}
-                  <span className="gradient-text">Fully audited.</span>
-                </h2>
-                <p className="text-slate-400 mt-3 max-w-2xl font-light">
-                  Every stage emits structured events with full provenance — so you always know exactly why an answer was produced.
-                </p>
-              </div>
-              <Link href="/login" className="btn-secondary text-sm whitespace-nowrap inline-flex items-center gap-2">
-                Try it now
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                Create account
+                <ArrowRight className="h-4 w-4" />
               </Link>
+              <a
+                href="#workflow"
+                className="inline-flex h-12 w-full items-center justify-center rounded-md border border-white/[0.12] bg-white/[0.04] px-5 text-sm font-semibold text-white transition hover:border-white/[0.22] hover:bg-white/[0.07] sm:w-auto"
+              >
+                See workflow
+              </a>
             </div>
 
-            {/* Pipeline steps */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {pipeline.map((p, idx) => (
-                <div key={p.step} className="group relative">
-                  <div className="rounded-2xl border border-white/[0.04] bg-white/[0.02] p-5 text-center transition-all duration-300 hover:bg-white/[0.05] hover:border-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/5">
-                    <div className="text-xs font-bold text-indigo-400/60 mb-2">{p.num}</div>
-                    <div className="mx-auto mb-3 h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/10 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
-                      <div className="h-2.5 w-2.5 rounded-full bg-indigo-400 dot-pulse" />
-                    </div>
-                    <p className="text-sm font-semibold text-white">{p.step}</p>
-                    <p className="text-xs text-slate-500 mt-1">{p.desc}</p>
+            <div className="mx-auto mt-8 grid max-w-3xl grid-cols-2 gap-2 sm:grid-cols-4">
+              {proofPoints.map((point) => (
+                <div
+                  key={point}
+                  className="rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-medium text-white/[0.64]"
+                >
+                  {point}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <ProductPreview />
+        </section>
+
+        <section id="product" className="border-y border-white/[0.08] bg-white/[0.025]">
+          <div className="mx-auto grid max-w-7xl gap-10 px-5 py-16 sm:px-6 lg:grid-cols-[0.85fr_1.15fr] lg:px-8 lg:py-20">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-200/70">
+                Product
+              </p>
+              <h2 className="mt-4 max-w-lg text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                The retrieval layer for teams that need proof, not guesses.
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-white/[0.58] sm:text-base">
+                Bring together documents, permissions, graph context, and
+                answer quality in one workspace built for repeatable knowledge
+                work.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {capabilities.map(({ title, description, icon: Icon }) => (
+                <article
+                  key={title}
+                  className="rounded-lg border border-white/10 bg-black/[0.24] p-5 shadow-[0_18px_60px_rgba(0,0,0,0.2)]"
+                >
+                  <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-md bg-white text-black">
+                    <Icon className="h-4 w-4" />
                   </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Stats row */}
-            <div className="mt-10 grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {stats.map((s) => (
-                <div key={s.label} className="rounded-xl border border-white/[0.04] bg-white/[0.02] px-5 py-4 text-center">
-                  <p className="text-xs text-slate-500 mb-1">{s.label}</p>
-                  <p className="text-2xl font-bold gradient-text">{s.value}</p>
-                  <p className="text-xs text-slate-600 mt-1">{s.sub}</p>
-                </div>
+                  <h3 className="text-base font-semibold text-white">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-white/[0.56]">{description}</p>
+                </article>
               ))}
             </div>
           </div>
         </section>
 
-        {/* ════════════════════════════════════════════════
-            SECURITY SECTION
-           ════════════════════════════════════════════════ */}
-        <section id="security" className="mx-auto max-w-7xl px-6 pb-28">
-          <div className="grid lg:grid-cols-2 gap-12 items-start">
-            {/* Left: Copy */}
-            <div className="space-y-6 animate-fade-in-up">
-              <div>
-                <p className="text-sm uppercase tracking-[0.25em] text-indigo-300/70 font-medium mb-3">Security</p>
-                <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
-                  Zero-trust by default.{" "}
-                  <span className="gradient-text">Not an afterthought.</span>
-                </h2>
-                <p className="text-slate-400 max-w-xl font-light leading-relaxed">
-                  Every access attempt is validated against user identity, role membership, and document classification — all before the LLM sees a single token.
-                </p>
-              </div>
-
-              <ul className="space-y-4">
-                {[
-                  { title: "Pre-LLM Access Control", desc: "RBAC and sensitivity filtering runs before context reaches the model." },
-                  { title: "Complete Audit Trail", desc: "Every query, mutation, and access attempt is permanently logged." },
-                  { title: "Data Classification", desc: "Four-tier system: Public, Internal, Confidential, Restricted." },
-                  { title: "Self-hosted", desc: "Keep everything inside your infrastructure. No data leaves your perimeter." },
-                ].map((item) => (
-                  <li key={item.title} className="flex items-start gap-3">
-                    <span className="mt-1.5 h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
-                    <div>
-                      <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="text-sm text-slate-400">{item.desc}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+        <section id="workflow" className="mx-auto max-w-7xl px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
+          <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-start">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-200/70">
+                Workflow
+              </p>
+              <h2 className="mt-4 max-w-xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                From upload to answer, every step stays traceable.
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-white/[0.58] sm:text-base">
+                GraphRAG makes the retrieval process visible enough for product
+                teams, operators, and security reviewers to trust the result.
+              </p>
             </div>
 
-            {/* Right: Audit log card */}
-            <div className="animate-fade-in-up animate-delay-200">
-              <div className="glass-card rounded-2xl p-6 animate-pulse-glow">
-                <div className="flex items-center justify-between text-xs mb-5">
-                  <span className="text-slate-400 font-medium">Access log</span>
-                  <span className="text-slate-500">Last 24 hours</span>
-                </div>
-                <div className="space-y-2">
-                  {auditRows.map((row) => (
-                    <div
-                      key={row.user + row.action}
-                      className="flex items-center justify-between rounded-xl border border-white/[0.04] bg-white/[0.02] px-4 py-3 transition-all duration-300 hover:bg-white/[0.04]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-xs font-bold text-white/60">
-                          {row.user.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-white">{row.user}</p>
-                          <p className="text-xs text-slate-500">{row.action}</p>
-                        </div>
-                      </div>
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${row.bg} ${row.color}`}>
-                        {row.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ════════════════════════════════════════════════
-            CTA SECTION
-           ════════════════════════════════════════════════ */}
-        <section className="mx-auto max-w-7xl px-6 pb-28">
-          <div className="relative rounded-3xl overflow-hidden animate-fade-in-up">
-            {/* Gradient background */}
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/30 via-purple-600/20 to-cyan-600/20" />
-            <div className="absolute inset-0 bg-[#0a0e1a]/60" />
-            {/* Animated border glow */}
-            <div className="absolute inset-0 rounded-3xl border border-indigo-500/20" />
-
-            <div className="relative px-8 py-16 md:px-16 md:py-20">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8">
-                <div className="space-y-4 max-w-xl">
-                  <p className="text-sm uppercase tracking-[0.25em] text-indigo-300/80 font-medium">Get started</p>
-                  <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-                    Spin up your workspace today.
-                  </h2>
-                  <p className="text-slate-300/80 font-light leading-relaxed">
-                    Upload a document, watch the pipeline run, and ask your first question in minutes. Enterprise security from day one.
+            <div className="grid gap-3 sm:grid-cols-2">
+              {workflow.map((item) => (
+                <div
+                  key={item.step}
+                  className="rounded-lg border border-white/10 bg-white/[0.035] p-5"
+                >
+                  <p className="text-xs font-semibold tracking-[0.2em] text-teal-200/70">
+                    {item.step}
+                  </p>
+                  <h3 className="mt-4 text-base font-semibold text-white">
+                    {item.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-white/[0.56]">
+                    {item.description}
                   </p>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Link
-                    href="/login"
-                    className="btn-primary text-sm inline-flex items-center justify-center gap-2"
-                  >
-                    Create account
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                  </Link>
-                  <Link
-                    href="/login"
-                    className="btn-secondary text-sm inline-flex items-center justify-center gap-2"
-                  >
-                    Sign in
-                  </Link>
-                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="security" className="border-y border-white/[0.08] bg-white/[0.025]">
+          <div className="mx-auto grid max-w-7xl gap-10 px-5 py-16 sm:px-6 lg:grid-cols-[1fr_0.95fr] lg:px-8 lg:py-20">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-200/70">
+                Security
+              </p>
+              <h2 className="mt-4 max-w-xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                Governance built into the retrieval path.
+              </h2>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-white/[0.58] sm:text-base">
+                Access checks, sensitivity levels, source lineage, and audit
+                events are part of the core flow, not a reporting layer bolted
+                on afterward.
+              </p>
+
+              <div className="mt-8 grid max-w-xl gap-3">
+                {[
+                  "Unauthorized content is filtered before prompt construction.",
+                  "Teams can inspect citations and source passages behind each answer.",
+                  "Admins get a durable log of who asked what and what was used.",
+                ].map((item) => (
+                  <div key={item} className="flex items-start gap-3 text-sm text-white/[0.68]">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
+                    <span>{item}</span>
+                  </div>
+                ))}
               </div>
+            </div>
+
+            <AuditPreview />
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
+          <div className="grid gap-8 border-y border-white/10 py-12 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-200/70">
+                Get started
+              </p>
+              <h2 className="mt-4 max-w-2xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                Build a knowledge workspace your team can actually trust.
+              </h2>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-white/[0.58] sm:text-base">
+                Upload a document, run the pipeline, and ask the first cited
+                question with governance in place from day one.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+              <Link
+                href="/register"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-white px-5 text-sm font-semibold text-black transition hover:bg-white/90"
+              >
+                Create account
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex h-12 items-center justify-center rounded-md border border-white/[0.12] px-5 text-sm font-semibold text-white/[0.78] transition hover:border-white/[0.22] hover:bg-white/[0.05] hover:text-white"
+              >
+                Sign in
+              </Link>
             </div>
           </div>
         </section>
       </main>
 
-      {/* ── Footer ── */}
-      <footer className="relative z-10 border-t border-white/[0.04]">
-        <div className="mx-auto max-w-7xl px-6 py-10">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-400 flex items-center justify-center">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3"/>
-                  <circle cx="19" cy="5" r="2"/>
-                  <circle cx="5" cy="19" r="2"/>
-                  <line x1="14.5" y1="10" x2="17.5" y2="6.5"/>
-                  <line x1="9.5" y1="14" x2="6.5" y2="17.5"/>
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">GraphRAG</p>
-                <p className="text-xs text-slate-500">Enterprise document intelligence</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-6 text-sm text-slate-500">
-              <Link href="/login" className="hover:text-white transition-colors duration-200">Sign in</Link>
-              <Link href="#features" className="hover:text-white transition-colors duration-200">Features</Link>
-              <Link href="#pipeline" className="hover:text-white transition-colors duration-200">Pipeline</Link>
-              <Link href="#security" className="hover:text-white transition-colors duration-200">Security</Link>
-            </div>
-          </div>
-          <div className="mt-8 pt-6 border-t border-white/[0.04] text-xs text-slate-600">
-            © {new Date().getFullYear()} GraphRAG. Built for secure, graph-powered document intelligence.
-          </div>
+      <footer className="relative z-10 border-t border-white/[0.08]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-8 text-sm text-white/[0.46] sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <BrandMark />
+          <p>2026 Enterprise Graph Rag. Secure document intelligence for governed teams.</p>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function ProductPreview() {
+  return (
+    <div className="mx-auto mt-14 max-w-6xl">
+      <div className="rounded-lg border border-white/[0.12] bg-white/[0.055] p-2 shadow-[0_32px_110px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+        <div className="overflow-hidden rounded-md border border-white/10 bg-[#080a0f]">
+          <div className="flex h-10 items-center justify-between border-b border-white/10 bg-white/[0.035] px-4">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-white/20" />
+              <span className="h-2.5 w-2.5 rounded-full bg-white/[0.14]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+            </div>
+            <p className="hidden text-xs font-medium uppercase tracking-[0.18em] text-white/[0.38] sm:block">
+              Workspace overview
+            </p>
+            <div className="h-2 w-20 rounded-full bg-white/10" />
+          </div>
+
+          <div className="grid min-h-[390px] md:grid-cols-[220px_1fr]">
+            <aside className="hidden border-r border-white/10 bg-black/20 p-4 md:block">
+              <div className="mb-6 flex items-center gap-3">
+                <div className="grid h-8 w-8 place-items-center rounded-md bg-white text-black">
+                  <Network className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">Enterprise Graph Rag</p>
+                  <p className="text-xs text-white/[0.38]">Workspace</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {["Dashboard", "Documents", "Chat", "Graph", "Analytics"].map((item, index) => (
+                  <div
+                    key={item}
+                    className={`rounded-md px-3 py-2 text-sm ${
+                      index === 0
+                        ? "bg-white text-black"
+                        : "border border-white/[0.08] text-white/[0.46]"
+                    }`}
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </aside>
+
+            <div className="p-4 sm:p-5 lg:p-6">
+              <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                <div>
+                  <div className="inline-flex items-center gap-2 rounded-md border border-emerald-300/[0.18] bg-emerald-300/[0.08] px-2.5 py-1 text-xs font-medium text-emerald-200">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Workspace healthy
+                  </div>
+                  <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">
+                    Knowledge operations
+                  </h3>
+                  <p className="mt-1 text-sm text-white/[0.46]">
+                    Documents, queries, quality, and access posture in one view.
+                  </p>
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-white/[0.64]">
+                  Last 30 days
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <PreviewMetric label="Documents" value="1,284" detail="982 ready" />
+                <PreviewMetric label="Queries" value="48k" detail="412ms p95" />
+                <PreviewMetric label="Quality" value="0.87" detail="faithfulness" />
+              </div>
+
+              <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_0.86fr]">
+                <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+                  <div className="mb-4 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-white">Retrieval signal</p>
+                    <BarChart3 className="h-4 w-4 text-white/[0.36]" />
+                  </div>
+                  <div className="flex h-36 items-end gap-2">
+                    {[44, 58, 36, 72, 84, 61, 92, 76, 88, 69, 95, 82].map((height, index) => (
+                      <span
+                        key={`${height}-${index}`}
+                        className="flex-1 rounded-sm bg-gradient-to-t from-teal-400/60 via-cyan-200/70 to-white/90"
+                        style={{ height: `${height}%` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+                  <div className="mb-4 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-white">Recent sources</p>
+                    <FileText className="h-4 w-4 text-white/[0.36]" />
+                  </div>
+                  <div className="space-y-3">
+                    {[
+                      ["Security policy", "Restricted"],
+                      ["Support handbook", "Internal"],
+                      ["Q2 product plan", "Confidential"],
+                    ].map(([title, level]) => (
+                      <div key={title} className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-white/[0.82]">{title}</p>
+                          <p className="text-xs text-white/[0.38]">Indexed with lineage</p>
+                        </div>
+                        <span className="shrink-0 rounded-md border border-white/10 px-2 py-1 text-xs text-white/[0.48]">
+                          {level}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewMetric({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/[0.36]">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-white">{value}</p>
+      <p className="mt-1 truncate text-xs text-white/[0.42]">{detail}</p>
+    </div>
+  );
+}
+
+function AuditPreview() {
+  const rows = [
+    { actor: "alice@acme.co", action: "Query", status: "Allowed" },
+    { actor: "hr-bot", action: "Embed", status: "Allowed" },
+    { actor: "guest", action: "Download", status: "Blocked" },
+    { actor: "svc-pipeline", action: "Graph", status: "Allowed" },
+  ];
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/[0.24] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.26)]">
+      <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/[0.38]">
+            Access log
+          </p>
+          <p className="mt-1 text-sm font-semibold text-white">Last 24 hours</p>
+        </div>
+        <Database className="h-5 w-5 text-white/[0.38]" />
+      </div>
+
+      <div className="space-y-2">
+        {rows.map((row) => {
+          const blocked = row.status === "Blocked";
+          return (
+            <div
+              key={`${row.actor}-${row.action}`}
+              className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-3"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white/[0.82]">{row.actor}</p>
+                <p className="text-xs text-white/[0.38]">{row.action}</p>
+              </div>
+              <span
+                className={`rounded-md px-2 py-1 text-xs font-medium ${
+                  blocked
+                    ? "bg-amber-300/10 text-amber-200"
+                    : "bg-emerald-300/10 text-emerald-200"
+                }`}
+              >
+                {row.status}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

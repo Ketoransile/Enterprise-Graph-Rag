@@ -59,6 +59,7 @@ class User(Base, IdMixin, TenantMixin, TimestampMixin):
 
     email = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=True)
+    avatar_url = Column(String(1024), nullable=True)
     hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
 

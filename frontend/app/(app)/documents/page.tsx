@@ -1,8 +1,18 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { RiEyeLine, RiRefreshLine } from "react-icons/ri";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { PageSkeleton } from "@/components/ui/skeleton";
 import { api, API_BASE, type Document } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 
@@ -21,6 +31,7 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateForm>({
     title: "",
@@ -31,33 +42,49 @@ export default function DocumentsPage() {
     security_level: "INTERNAL",
   });
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadDocuments = useCallback(
+    async ({ showSkeleton = false }: { showSkeleton?: boolean } = {}) => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      if (showSkeleton) setLoading(true);
+      setRefreshing(!showSkeleton);
+      setError(null);
+
+      try {
+        setDocuments(await api.documents.list(token));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load documents");
+      } finally {
+        if (showSkeleton) setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
-    async function load() {
-      if (!token) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const docs = await api.documents.list(token);
-        setDocuments(docs);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load documents",
-        );
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [token]);
+    loadDocuments({ showSkeleton: true });
+  }, [loadDocuments]);
 
-  async function handleDelete(id: string) {
-    if (!token) return;
-    if (!confirm("Delete this document?")) return;
+  async function handleRefresh() {
+    if (refreshing || loading) return;
+    await loadDocuments();
+  }
+
+  async function handleDelete() {
+    if (!token || !deleteTarget) return;
+    const id = deleteTarget.id;
     setDeletingId(id);
+    setError(null);
     try {
       await api.documents.delete(id, token);
       setDocuments((prev) => prev.filter((d) => d.id !== id));
+      setDeleteTarget(null);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to delete document",
@@ -141,10 +168,10 @@ export default function DocumentsPage() {
   if (!token) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-xl font-semibold text-white">
+        <h2 className="text-xl font-semibold text-black dark:text-white">
           Authentication Required
         </h2>
-        <p className="text-slate-400 mt-2">
+        <p className="text-neutral-500 mt-2">
           Please sign in to access documents.
         </p>
       </div>
@@ -152,25 +179,21 @@ export default function DocumentsPage() {
   }
 
   if (loading) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-slate-400">Loading documents...</p>
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   return (
     <div className="space-y-8">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-50">Documents</h1>
-          <p className="text-slate-400 mt-1">
+          <h1 className="text-3xl font-semibold text-black dark:text-white">Documents</h1>
+          <p className="text-neutral-500 mt-1">
             Manage and register documents for ingestion.
           </p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="bg-white text-slate-950 px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-200 transition"
+          className="bg-black text-white dark:bg-white dark:text-black px-4 py-2 rounded-md text-sm font-medium hover:opacity-80 transition"
         >
           {showForm ? "Cancel" : "Register document"}
         </button>
@@ -185,22 +208,22 @@ export default function DocumentsPage() {
       {showForm && (
         <form
           onSubmit={handleCreate}
-          className="rounded-lg border border-slate-800 bg-slate-900/50 p-6 space-y-4"
+          className="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50 p-6 space-y-4"
         >
           <div className="space-y-2">
-            <label className="block text-sm text-slate-300">Title</label>
+            <label className="block text-sm text-neutral-600 dark:text-neutral-300">Title</label>
             <input
               required
               value={form.title}
               onChange={(e) =>
                 setForm((f) => ({ ...f, title: e.target.value }))
               }
-              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-black dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white"
               placeholder="Document title"
             />
           </div>
           <div className="space-y-2">
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-neutral-600 dark:text-neutral-300">
               Security level
             </label>
             <select
@@ -208,7 +231,7 @@ export default function DocumentsPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, security_level: e.target.value }))
               }
-              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-black dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white"
             >
               <option value="PUBLIC">Public</option>
               <option value="INTERNAL">Internal</option>
@@ -217,7 +240,7 @@ export default function DocumentsPage() {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-neutral-600 dark:text-neutral-300">
               Upload file
             </label>
             <div
@@ -228,18 +251,18 @@ export default function DocumentsPage() {
                 const file = e.dataTransfer.files?.[0];
                 if (file) onFileSelect(file);
               }}
-              className="mt-1 flex justify-center rounded-lg border border-dashed border-slate-600 px-6 py-10 transition-colors hover:border-slate-400 bg-slate-900/50"
+              className="mt-1 flex justify-center rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 px-6 py-10 transition-colors hover:border-black dark:hover:border-white bg-white dark:bg-neutral-900/50"
             >
               <div className="text-center">
-                <svg className="mx-auto h-12 w-12 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg className="mx-auto h-12 w-12 text-neutral-400 dark:text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="17 8 12 3 7 8" />
                   <line x1="12" y1="3" x2="12" y2="15" />
                 </svg>
-                <div className="mt-4 flex text-sm leading-6 text-slate-400">
+                <div className="mt-4 flex text-sm leading-6 text-neutral-600 dark:text-neutral-400 justify-center">
                   <label
                     htmlFor="file-upload"
-                    className="relative cursor-pointer rounded-md bg-transparent font-semibold text-blue-400 focus-within:outline-none hover:text-blue-300"
+                    className="relative cursor-pointer rounded-md bg-transparent font-semibold text-black dark:text-white focus-within:outline-none hover:underline"
                   >
                     <span>Upload a file</span>
                     <input
@@ -255,14 +278,14 @@ export default function DocumentsPage() {
                   </label>
                   <p className="pl-1">or drag and drop</p>
                 </div>
-                <p className="text-xs leading-5 text-slate-500">
+                <p className="text-xs leading-5 text-neutral-500 mt-2">
                   {selectedFile ? selectedFile.name : "PDF, DOCX, TXT, MD up to 10MB"}
                 </p>
               </div>
             </div>
           </div>
           <div className="space-y-2">
-            <label className="block text-sm text-slate-300">
+            <label className="block text-sm text-neutral-600 dark:text-neutral-300">
               Description (optional)
             </label>
             <input
@@ -270,7 +293,7 @@ export default function DocumentsPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, description: e.target.value }))
               }
-              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-black dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white"
               placeholder="Brief description"
             />
           </div>
@@ -278,7 +301,7 @@ export default function DocumentsPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="bg-white text-slate-950 px-5 py-2 rounded-md text-sm font-medium hover:bg-slate-200 transition disabled:opacity-50"
+              className="bg-black text-white dark:bg-white dark:text-black px-5 py-2 rounded-md text-sm font-medium hover:opacity-80 transition disabled:opacity-50"
             >
               {submitting ? "Registering..." : "Register"}
             </button>
@@ -287,16 +310,33 @@ export default function DocumentsPage() {
       )}
 
       {documents.length === 0 ? (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-10 text-center">
-          <p className="text-slate-400">No documents yet.</p>
-          <p className="text-sm text-slate-500 mt-1">
+        <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/30 p-10 text-center">
+          <p className="text-neutral-600 dark:text-neutral-400">No documents yet.</p>
+          <p className="text-sm text-neutral-500 mt-1">
             Register your first document to start ingestion.
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-800 overflow-hidden">
+        <div className="overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-black">
+            <div>
+              <h2 className="text-sm font-semibold text-black dark:text-white">Document library</h2>
+              <p className="mt-0.5 text-xs text-neutral-500">
+                {documents.length} documents registered
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-neutral-200 px-3 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-900"
+            >
+              <RiRefreshLine className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Refreshing" : "Refresh"}
+            </button>
+          </div>
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-900/80 text-slate-400">
+            <thead className="bg-neutral-100 dark:bg-neutral-900/80 text-neutral-600 dark:text-neutral-400">
               <tr>
                 <th className="px-4 py-3 font-medium">Title</th>
                 <th className="px-4 py-3 font-medium">Type</th>
@@ -306,37 +346,47 @@ export default function DocumentsPage() {
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
               {documents.map((doc) => (
-                <tr key={doc.id} className="hover:bg-slate-900/30 transition">
-                  <td className="px-4 py-3 text-slate-200">
+                <tr key={doc.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/30 transition">
+                  <td className="px-4 py-3 text-black dark:text-neutral-200 font-medium">
                     <Link
                       href={`/documents/${doc.id}` as any}
-                      className="hover:text-blue-300"
+                      className="hover:underline"
                     >
                       {doc.title}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-slate-400">{doc.file_type}</td>
-                  <td className="px-4 py-3 text-slate-400">
+                  <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">{doc.file_type}</td>
+                  <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">
                     {doc.security_level}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-300 border border-emerald-500/20">
+                    <span className="inline-flex rounded-full bg-neutral-200 dark:bg-neutral-800 px-2.5 py-0.5 text-xs font-medium text-black dark:text-white border border-neutral-300 dark:border-neutral-700">
                       {doc.processing_status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td className="px-4 py-3 text-neutral-500">
                     {new Date(doc.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <Link
+                        href={`/documents/${doc.id}` as any}
+                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-2.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-900"
+                      >
+                        <RiEyeLine className="h-4 w-4" />
+                        View
+                      </Link>
                     <button
-                      onClick={() => handleDelete(doc.id)}
+                      type="button"
+                      onClick={() => setDeleteTarget(doc)}
                       disabled={deletingId === doc.id}
-                      className="text-sm text-red-300 hover:text-red-200 disabled:opacity-50"
+                        className="inline-flex h-8 items-center justify-center rounded-md px-2.5 text-xs font-medium text-red-600 transition hover:bg-red-50 hover:text-red-800 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
                     >
                       {deletingId === doc.id ? "Deleting..." : "Delete"}
                     </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -344,6 +394,41 @@ export default function DocumentsPage() {
           </table>
         </div>
       )}
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent className="border-neutral-200 bg-white text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 sm:rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-black dark:text-white">Delete document</DialogTitle>
+            <DialogDescription className="text-neutral-500 dark:text-neutral-400">
+              This will permanently delete {deleteTarget ? `"${deleteTarget.title}"` : "this document"}
+              and remove it from the workspace.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              disabled={Boolean(deletingId)}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-200 px-4 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-900"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={Boolean(deletingId)}
+              className="inline-flex h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+            >
+              {deletingId ? "Deleting..." : "Delete"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

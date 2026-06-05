@@ -6,8 +6,7 @@ import uuid
 from typing import List
 
 import fitz  # PyMuPDF
-from google import genai
-from google.genai import types
+from sqlalchemy import delete
 
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -15,6 +14,7 @@ from app.models import ProcessingStatus
 from app.repositories.chunk import ChunkRepository
 from app.repositories.document import DocumentRepository
 from app.schemas.document import DocumentUpdate
+from app.services.ai_model_client import AIModelClient
 from app.services.document_service import DocumentService
 from app.services.knowledge_graph_service import KnowledgeGraphService
 
@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 class IngestionPipeline:
     def __init__(self):
-        if settings.gemini_api_key:
-            self.gemini = genai.Client(api_key=settings.gemini_api_key)
+        if settings.openai_api_key:
+            self.models = AIModelClient()
         else:
-            self.gemini = None
-            logger.warning("GEMINI_API_KEY is not set. Embeddings will not be generated.")
+            self.models = None
+            logger.warning("OPENAI_API_KEY is not set. Embeddings will not be generated.")
 
     async def run_pipeline(
         self,
@@ -63,15 +63,29 @@ class IngestionPipeline:
 
                 # 4. Generate Embeddings
                 chunk_records = []
-                if self.gemini:
-                    response = self.gemini.models.embed_content(
-                        model='gemini-embedding-2',
-                        contents=chunks,
-                        config=types.EmbedContentConfig(output_dimensionality=768),
-                    )
-                    embeddings = [e.values for e in response.embeddings]
+                if self.models and settings.openai_embeddings_enabled:
+                    try:
+                        embeddings = await self.models.embed(chunks)
+                    except Exception as embed_err:
+                        logger.warning(
+                            "Embedding generation failed for document %s; using zero vectors: %s",
+                            document_id,
+                            embed_err,
+                        )
+                        embeddings = self._zero_embeddings(len(chunks))
                 else:
-                    embeddings = [[0.0] * 768 for _ in chunks]  # Fallback stub if no key
+                    logger.info(
+                        "Embeddings disabled or unavailable for document %s; using zero vectors.",
+                        document_id,
+                    )
+                    embeddings = self._zero_embeddings(len(chunks))
+
+                if not self._embeddings_are_usable(embeddings, len(chunks)):
+                    logger.warning(
+                        "Embedding provider returned unusable vectors for document %s; using zero vectors.",
+                        document_id,
+                    )
+                    embeddings = self._zero_embeddings(len(chunks))
 
                 # 5. Save Chunks to Database
                 for idx, chunk_text in enumerate(chunks):
@@ -83,12 +97,24 @@ class IngestionPipeline:
                         "page_number": None,
                         "security_level": security_level,
                     })
-                
+
                 from app.models.core import Chunk, Embedding
+                await session.execute(
+                    delete(Embedding)
+                    .where(Embedding.tenant_id == tenant_id)
+                    .where(Embedding.document_id == document_id)
+                )
+                await session.execute(
+                    delete(Chunk)
+                    .where(Chunk.tenant_id == tenant_id)
+                    .where(Chunk.document_id == document_id)
+                )
+                await session.flush()
+
                 chunk_objs = [Chunk(**record) for record in chunk_records]
                 session.add_all(chunk_objs)
                 await session.flush()
-                
+
                 # 6. Save Embeddings
                 embedding_objs = []
                 for chunk_obj, embedding_vector in zip(chunk_objs, embeddings):
@@ -143,22 +169,36 @@ class IngestionPipeline:
                     logger.error(f"Failed to update document status to FAILED: {inner_e}")
 
     def _extract_text(self, file_bytes: bytes, file_type: str) -> str:
-        if file_type.lower() == "pdf":
+        normalized_type = self._normalize_file_type(file_type)
+        if normalized_type == "pdf":
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             text = ""
             for page in doc:
                 text += page.get_text() + "\n\n"
             return text
-        elif file_type.lower() == "docx":
+        elif normalized_type == "docx":
             import docx
             doc = docx.Document(io.BytesIO(file_bytes))
             text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
             return text
-        elif file_type.lower() in ["txt", "md"]:
+        elif normalized_type in ["txt", "md"]:
             return file_bytes.decode("utf-8", errors="ignore")
         else:
             # Fallback for unknown text-based or minimal support
             return file_bytes.decode("utf-8", errors="ignore")
+
+    @staticmethod
+    def _normalize_file_type(file_type: str) -> str:
+        value = (file_type or "").lower().strip()
+        if "pdf" in value:
+            return "pdf"
+        if "word" in value or "docx" in value:
+            return "docx"
+        if "markdown" in value or value.endswith(".md") or value == "md":
+            return "md"
+        if "text" in value or value.endswith(".txt") or value == "txt":
+            return "txt"
+        return value
 
     def _chunk_text(self, text: str, chunk_size: int, overlap: int) -> List[str]:
         from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -170,3 +210,18 @@ class IngestionPipeline:
         )
         chunks = text_splitter.split_text(text)
         return chunks
+
+    @staticmethod
+    def _zero_embeddings(count: int) -> List[List[float]]:
+        return [[0.0] * settings.openai_embedding_dimensions for _ in range(count)]
+
+    @staticmethod
+    def _embeddings_are_usable(embeddings: List[List[float]], expected_count: int) -> bool:
+        expected_dimensions = settings.openai_embedding_dimensions
+        return (
+            len(embeddings) == expected_count
+            and all(
+                isinstance(vector, list) and len(vector) == expected_dimensions
+                for vector in embeddings
+            )
+        )

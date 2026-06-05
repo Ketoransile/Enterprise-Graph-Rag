@@ -33,10 +33,13 @@ venv.bak/
 node_modules/
 npm-debug.log
 yarn-error.log
+*.log
 .next/
 out/
 build/
 dist/
+*.tsbuildinfo
+*.env.local
 
 # IDEs
 .idea/

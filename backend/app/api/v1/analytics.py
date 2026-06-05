@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import AuthContext, get_current_user, get_default_tenant_id
+from app.auth.dependencies import AuthContext, get_default_tenant_id, require_roles
+from app.auth.roles import RoleName
 from app.db.session import get_db
 from app.models.core import AuditLog, Document, EvaluationMetric
 
@@ -52,7 +53,7 @@ class AnalyticsResponse(BaseModel):
 
 @router.get("/", response_model=AnalyticsResponse, tags=["analytics"])
 async def get_analytics(
-    auth: AuthContext = Depends(get_current_user),
+    auth: AuthContext = Depends(require_roles(RoleName.ADMIN)),
     db: AsyncSession = Depends(get_db),
     days: int = Query(30, ge=1, le=365),
 ):

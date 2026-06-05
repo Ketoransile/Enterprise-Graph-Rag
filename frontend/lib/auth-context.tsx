@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 interface AuthContextType {
   token: string | null;
@@ -23,19 +23,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setReady(true);
   }, []);
 
-  const setAuth = (newToken: string) => {
+  const setAuth = useCallback((newToken: string) => {
     setToken(newToken);
-  };
+    localStorage.setItem("token", newToken);
+  }, []);
 
-  const clearAuth = () => {
+  const clearAuth = useCallback(() => {
     setToken(null);
     localStorage.removeItem("token");
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ token, setAuth, clearAuth, ready }),
+    [clearAuth, ready, setAuth, token],
+  );
 
   return (
-    <AuthContext.Provider
-      value={{ token, setAuth, clearAuth, ready }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

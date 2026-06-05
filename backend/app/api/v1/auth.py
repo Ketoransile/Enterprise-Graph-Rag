@@ -1,11 +1,13 @@
-import uuid
 import logging
+import secrets
+import urllib.parse
+import uuid
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,7 @@ from jose import jwt
 from app.auth.dependencies import AuthContext, get_current_user, require_roles, get_default_tenant_id
 from app.auth.google import GoogleOAuthClient, require_google_configured
 from app.auth.roles import RoleName
+from app.auth.security import decode_access_token
 from app.core.config import settings
 from app.db.session import get_db
 from app.services.auth_service import AuthService
@@ -22,12 +25,57 @@ from app.schemas.auth import (
     InviteResponse,
     LoginRequest,
     RegisterRequest,
+    RoleCreate,
+    RoleRead,
+    RoleUpdate,
     TokenResponse,
     UserListItem,
+    UserRolesUpdate,
     UserRead,
+    UserStatusUpdate,
 )
 
 router = APIRouter()
+
+GOOGLE_STATE_COOKIE = "graphrag_oauth_state"
+GOOGLE_HANDOFF_COOKIE = "graphrag_oauth_handoff"
+GOOGLE_STATE_MAX_AGE = 10 * 60
+GOOGLE_HANDOFF_MAX_AGE = 60
+GOOGLE_COOKIE_PATH = "/api/v1/auth/google"
+
+
+def _cookie_secure() -> bool:
+    return settings.frontend_app_url.startswith("https://")
+
+
+def _cookie_samesite() -> str:
+    return "none" if _cookie_secure() else "lax"
+
+
+def _set_cookie(response: Response, key: str, value: str, max_age: int) -> None:
+    response.set_cookie(
+        key=key,
+        value=value,
+        max_age=max_age,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite=_cookie_samesite(),
+        path=GOOGLE_COOKIE_PATH,
+    )
+
+
+def _delete_cookie(response: Response, key: str) -> None:
+    response.delete_cookie(
+        key=key,
+        path=GOOGLE_COOKIE_PATH,
+        secure=_cookie_secure(),
+        samesite=_cookie_samesite(),
+    )
+
+
+def _redirect_login(params: dict[str, str] | None = None) -> RedirectResponse:
+    query = f"?{urllib.parse.urlencode(params)}" if params else ""
+    return RedirectResponse(url=f"{settings.frontend_app_url}/login{query}")
 
 
 @router.post("/login", response_model=TokenResponse, tags=["auth"])
@@ -92,6 +140,7 @@ async def me(
         id=str(user.id),
         email=user.email,
         full_name=user.full_name,
+        avatar_url=user.avatar_url,
         is_active=user.is_active,
         roles=role_names,
     )
@@ -132,8 +181,120 @@ async def list_users(
     return [UserListItem(**u) for u in users]
 
 
+@router.patch("/users/{user_id}/status", response_model=UserListItem, tags=["auth"])
+async def update_user_status(
+    user_id: uuid.UUID,
+    payload: UserStatusUpdate,
+    auth: AuthContext = Depends(require_roles(RoleName.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> UserListItem:
+    if user_id == uuid.UUID(auth.user_id) and not payload.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot deactivate your own account")
+
+    service = AuthService(db)
+    try:
+        user = await service.set_user_status(
+            tenant_id=get_default_tenant_id(),
+            user_id=user_id,
+            is_active=payload.is_active,
+        )
+        await db.commit()
+        return UserListItem(**user)
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User status update failed") from exc
+
+
+@router.patch("/users/{user_id}/roles", response_model=UserListItem, tags=["auth"])
+async def update_user_roles(
+    user_id: uuid.UUID,
+    payload: UserRolesUpdate,
+    auth: AuthContext = Depends(require_roles(RoleName.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> UserListItem:
+    normalized_roles = {role.strip().upper() for role in payload.roles if role.strip()}
+    if user_id == uuid.UUID(auth.user_id) and RoleName.ADMIN.value not in normalized_roles:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot remove your own admin role")
+
+    service = AuthService(db)
+    try:
+        user = await service.replace_user_roles(
+            tenant_id=get_default_tenant_id(),
+            user_id=user_id,
+            roles=list(normalized_roles),
+        )
+        await db.commit()
+        return UserListItem(**user)
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role assignment failed") from exc
+
+
+@router.get("/roles", response_model=List[RoleRead], tags=["auth"])
+async def list_roles(
+    auth: AuthContext = Depends(require_roles(RoleName.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> List[RoleRead]:
+    service = AuthService(db)
+    roles = await service.list_roles(tenant_id=get_default_tenant_id())
+    return [RoleRead(**role) for role in roles]
+
+
+@router.post("/roles", response_model=RoleRead, tags=["auth"])
+async def create_role(
+    payload: RoleCreate,
+    auth: AuthContext = Depends(require_roles(RoleName.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> RoleRead:
+    service = AuthService(db)
+    try:
+        role = await service.create_role(
+            tenant_id=get_default_tenant_id(),
+            name=payload.name,
+            description=payload.description,
+        )
+        await db.commit()
+        return RoleRead(**role)
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role creation failed") from exc
+
+
+@router.patch("/roles/{name}", response_model=RoleRead, tags=["auth"])
+async def update_role(
+    name: str,
+    payload: RoleUpdate,
+    auth: AuthContext = Depends(require_roles(RoleName.ADMIN)),
+    db: AsyncSession = Depends(get_db),
+) -> RoleRead:
+    service = AuthService(db)
+    try:
+        role = await service.update_role(
+            tenant_id=get_default_tenant_id(),
+            name=name,
+            description=payload.description,
+        )
+        await db.commit()
+        return RoleRead(**role)
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role update failed") from exc
+
+
 @router.get("/google", tags=["auth"])
-async def google_start():
+async def google_start(response: Response):
     require_google_configured()
     client = GoogleOAuthClient()
     now = datetime.now(timezone.utc)
@@ -145,23 +306,27 @@ async def google_start():
     }
     signed_state = jwt.encode(state_payload, settings.jwt_secret, algorithm="HS256")
     url = client.build_auth_url(state=signed_state)
-    return {"auth_url": url, "state": signed_state}
+    _set_cookie(response, GOOGLE_STATE_COOKIE, signed_state, GOOGLE_STATE_MAX_AGE)
+    return {"auth_url": url}
 
 
-@router.get("/google/callback", response_model=TokenResponse, tags=["auth"])
+@router.get("/google/callback", tags=["auth"])
 async def google_callback(
     code: str | None = None,
     state: str | None = None,
+    state_cookie: str | None = Cookie(default=None, alias=GOOGLE_STATE_COOKIE),
     db: AsyncSession = Depends(get_db),
 ):
     require_google_configured()
-    if not code:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing code")
-    if not state:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing state")
-
-    client = GoogleOAuthClient()
     try:
+        if not code:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing code")
+        if not state or not state_cookie:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing state")
+        if not secrets.compare_digest(state, state_cookie):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state")
+
+        client = GoogleOAuthClient()
         try:
             state_payload = jwt.decode(state, settings.jwt_secret, algorithms=["HS256"])
         except Exception:
@@ -178,6 +343,7 @@ async def google_callback(
         profile = await client.fetch_userinfo(access_token)
         email = profile.get("email")
         full_name = profile.get("name")
+        avatar_url = profile.get("picture")
         if not email:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google profile missing email")
 
@@ -185,17 +351,43 @@ async def google_callback(
         token = await service.get_or_create_oauth_user(
             email=email,
             full_name=full_name,
+            avatar_url=avatar_url,
             tenant_id=get_default_tenant_id(),
         )
         await db.commit()
 
-        redirect_target = f"{settings.frontend_app_url}/login?token={token}"
-        return RedirectResponse(url=redirect_target)
+        redirect = _redirect_login({"oauth": "success"})
+        _delete_cookie(redirect, GOOGLE_STATE_COOKIE)
+        _set_cookie(redirect, GOOGLE_HANDOFF_COOKIE, token, GOOGLE_HANDOFF_MAX_AGE)
+        return redirect
     except HTTPException as exc:
-        import urllib.parse
-        err_msg = urllib.parse.quote(exc.detail)
-        return RedirectResponse(url=f"{settings.frontend_app_url}/login?error={err_msg}")
+        redirect = _redirect_login({"error": str(exc.detail)})
+        _delete_cookie(redirect, GOOGLE_STATE_COOKIE)
+        _delete_cookie(redirect, GOOGLE_HANDOFF_COOKIE)
+        return redirect
     except Exception as exc:  # defensive: hide internals
-        import urllib.parse
         logger.exception("Google login callback failed:")
-        return RedirectResponse(url=f"{settings.frontend_app_url}/login?error=Google%20login%20failed")
+        redirect = _redirect_login({"error": "Google login failed"})
+        _delete_cookie(redirect, GOOGLE_STATE_COOKIE)
+        _delete_cookie(redirect, GOOGLE_HANDOFF_COOKIE)
+        return redirect
+
+
+@router.post("/google/complete", response_model=TokenResponse, tags=["auth"])
+async def google_complete(
+    response: Response,
+    handoff_token: str | None = Cookie(default=None, alias=GOOGLE_HANDOFF_COOKIE),
+) -> TokenResponse:
+    if not handoff_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing OAuth handoff")
+
+    try:
+        payload = decode_access_token(handoff_token)
+        if not payload.get("sub"):
+            raise ValueError("Invalid token payload")
+    except ValueError:
+        _delete_cookie(response, GOOGLE_HANDOFF_COOKIE)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid OAuth handoff")
+
+    _delete_cookie(response, GOOGLE_HANDOFF_COOKIE)
+    return TokenResponse(access_token=handoff_token)

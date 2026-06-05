@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { TableSkeleton } from "@/components/ui/skeleton";
 import { api, type AuditLog } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 
@@ -52,9 +53,7 @@ export default function AuditLogsPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-12">
-          <p className="text-slate-400">Loading audit logs...</p>
-        </div>
+        <TableSkeleton rows={8} columns={6} />
       ) : logs.length === 0 ? (
         <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-10 text-center">
           <p className="text-slate-400">No audit logs found.</p>

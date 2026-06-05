@@ -82,6 +82,29 @@ async def delete_document(
     return None
 
 
+@router.post("/{document_id}/reprocess", response_model=DocumentRead, tags=["documents"])
+async def reprocess_document(
+    document_id: uuid.UUID,
+    auth: AuthContext = Depends(require_roles(RoleName.ADMIN, RoleName.MANAGER)),
+    db: AsyncSession = Depends(get_db),
+):
+    service = DocumentService(DocumentRepository(db))
+    doc = await service.get_document(tenant_id=get_default_tenant_id(), document_id=document_id)
+    if not doc.storage_path:
+        raise HTTPException(status_code=400, detail="Document has no uploaded file to process")
+
+    updated = await service.update_document(
+        tenant_id=get_default_tenant_id(),
+        document_id=document_id,
+        data=DocumentUpdate(processing_status="PENDING"),
+    )
+
+    from app.workers.tasks.document_tasks import process_document_task
+
+    process_document_task.delay(str(document_id))
+    return DocumentRead.model_validate(updated)
+
+
 @router.get("/{document_id}/chunks", response_model=List[ChunkRead], tags=["documents"])
 async def list_document_chunks(
     document_id: uuid.UUID,

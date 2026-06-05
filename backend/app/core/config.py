@@ -28,7 +28,13 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
 
-    gemini_api_key: str = ""
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.freemodel.dev"
+    openai_model: str = "gpt-5.5"
+    openai_reasoning_effort: str = "xhigh"
+    openai_embeddings_enabled: bool = False
+    openai_embedding_model: str = "text-embedding-3-small"
+    openai_embedding_dimensions: int = 768
 
     frontend_app_url: str = "http://localhost:3000"
 

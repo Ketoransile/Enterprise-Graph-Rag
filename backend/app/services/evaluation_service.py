@@ -1,7 +1,7 @@
 """
 RAG Evaluation Service – LLM-as-a-Judge.
 
-Automatically evaluates the quality of RAG responses using Gemini.
+Automatically evaluates the quality of RAG responses using the configured AI model.
 Scores:
   - Faithfulness: Does the answer stay grounded in the provided context?
   - Relevance: Does the answer actually address the user's question?
@@ -13,12 +13,11 @@ import logging
 import uuid
 from typing import Optional
 
-from google import genai
-from google.genai import types
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.core import EvaluationMetric
+from app.services.ai_model_client import AIModelClient
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +65,13 @@ Return ONLY a JSON object: {"score": <float>, "reasoning": "<brief explanation>"
 
 
 class EvaluationService:
-    """Evaluates RAG responses using Gemini as an automated judge."""
+    """Evaluates RAG responses using the configured AI model as an automated judge."""
 
     def __init__(self) -> None:
-        if settings.gemini_api_key:
-            self.gemini = genai.Client(api_key=settings.gemini_api_key)
+        if settings.openai_api_key:
+            self.models = AIModelClient()
         else:
-            self.gemini = None
+            self.models = None
 
     async def evaluate_and_store(
         self,
@@ -88,8 +87,8 @@ class EvaluationService:
         num_chunks_after_rbac: int,
     ) -> Optional[EvaluationMetric]:
         """Run all evaluations and persist the result."""
-        if not self.gemini:
-            logger.warning("No Gemini API key – skipping evaluation.")
+        if not self.models:
+            logger.warning("No OPENAI_API_KEY configured - skipping evaluation.")
             return None
 
         faithfulness = await self._evaluate(
@@ -128,19 +127,17 @@ class EvaluationService:
         return metric
 
     async def _evaluate(self, system_prompt: str, user_input: str) -> float:
-        """Call Gemini to score a single evaluation dimension."""
+        """Call the configured AI model to score a single evaluation dimension."""
         try:
-            response = await self.gemini.aio.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=user_input,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                ),
+            raw = await self.models.chat_completion(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_input},
+                ],
+                temperature=0.0,
+                response_format={"type": "json_object"},
             )
-            raw = response.text.strip()
-            data = json.loads(raw)
+            data = json.loads(raw.strip())
             score = float(data.get("score", 0.0))
             return max(0.0, min(1.0, score))
         except Exception as e:

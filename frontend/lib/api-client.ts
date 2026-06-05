@@ -2,6 +2,18 @@ export const API_BASE: string = process.env.NEXT_PUBLIC_API_BASE_URL || "http://
 
 type ApiFetchOptions = RequestInit & { token?: string };
 
+export class ApiError extends Error {
+  status: number;
+  body: string;
+
+  constructor(message: string, status: number, body: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function apiFetch<T>(
   path: string,
   options: ApiFetchOptions = {},
@@ -13,12 +25,13 @@ export async function apiFetch<T>(
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...rest,
+    credentials: rest.credentials ?? "include",
     headers: mergedHeaders,
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `Request failed (${res.status})`);
+    throw new ApiError(text || `Request failed (${res.status})`, res.status, text);
   }
 
   if (res.status === 204) return undefined as T;
@@ -90,13 +103,35 @@ export interface GraphExploreResponse {
   edges: GraphEdge[];
 }
 
+export interface UserListItem {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+  roles: string[];
+  created_at: string | null;
+}
+
+export interface RoleRead {
+  id: string;
+  name: string;
+  description: string | null;
+  user_count: number;
+  created_at: string | null;
+}
+
 // API functions
 export const api = {
   health: () => apiFetch<HealthStatus>("/api/v1/ready"),
 
   auth: {
     googleStart: () =>
-      apiFetch<{ auth_url: string; state: string }>("/api/v1/auth/google"),
+      apiFetch<{ auth_url: string }>("/api/v1/auth/google"),
+    googleComplete: () =>
+      apiFetch<{ access_token: string; token_type: string }>("/api/v1/auth/google/complete", {
+        method: "POST",
+      }),
     login: (email: string, password: string) =>
       apiFetch<{ access_token: string; token_type: string }>("/api/v1/auth/login", {
         method: "POST",
@@ -108,7 +143,14 @@ export const api = {
         body: JSON.stringify({ email, password, full_name: fullName }),
       }),
     me: (token: string) =>
-      apiFetch<{ id: string; email: string; full_name: string | null; is_active: boolean }>("/api/v1/auth/me", { token }),
+      apiFetch<{
+        id: string;
+        email: string;
+        full_name: string | null;
+        avatar_url: string | null;
+        is_active: boolean;
+        roles: string[];
+      }>("/api/v1/auth/me", { token }),
     invite: (data: { email: string; full_name?: string; role?: string }, token: string) =>
       apiFetch<{ id: string; email: string; roles: string[]; temporary_password: string }>("/api/v1/auth/invite", {
         method: "POST",
@@ -116,7 +158,33 @@ export const api = {
         body: JSON.stringify(data),
       }),
     listUsers: (token: string) =>
-      apiFetch<Array<{ id: string; email: string; full_name: string | null; is_active: boolean; roles: string[]; created_at: string | null }>>("/api/v1/auth/users", { token }),
+      apiFetch<UserListItem[]>("/api/v1/auth/users", { token }),
+    updateUserStatus: (id: string, isActive: boolean, token: string) =>
+      apiFetch<UserListItem>(`/api/v1/auth/users/${id}/status`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ is_active: isActive }),
+      }),
+    updateUserRoles: (id: string, roles: string[], token: string) =>
+      apiFetch<UserListItem>(`/api/v1/auth/users/${id}/roles`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ roles }),
+      }),
+    listRoles: (token: string) =>
+      apiFetch<RoleRead[]>("/api/v1/auth/roles", { token }),
+    createRole: (data: { name: string; description?: string }, token: string) =>
+      apiFetch<RoleRead>("/api/v1/auth/roles", {
+        method: "POST",
+        token,
+        body: JSON.stringify(data),
+      }),
+    updateRole: (name: string, data: { description?: string | null }, token: string) =>
+      apiFetch<RoleRead>(`/api/v1/auth/roles/${encodeURIComponent(name)}`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify(data),
+      }),
   },
 
   documents: {
@@ -160,6 +228,11 @@ export const api = {
     delete: (id: string, token: string) =>
       apiFetch<void>(`/api/v1/documents/${id}`, {
         method: "DELETE",
+        token,
+      }),
+    reprocess: (id: string, token: string) =>
+      apiFetch<Document>(`/api/v1/documents/${id}/reprocess`, {
+        method: "POST",
         token,
       }),
     chunks: (id: string, token: string) =>

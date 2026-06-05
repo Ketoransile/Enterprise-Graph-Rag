@@ -1,7 +1,7 @@
 """
 Knowledge Graph extraction service.
 
-Uses Gemini to extract entities (nodes) and relationships (edges) from text
+Uses the configured AI model to extract entities (nodes) and relationships (edges) from text
 chunks, then persists them into Neo4j with tenant/document isolation.
 """
 
@@ -10,11 +10,9 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-from google import genai
-from google.genai import types
-
 from app.core.config import settings
 from app.db.neo4j_driver import get_neo4j_driver
+from app.services.ai_model_client import AIModelClient
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +45,10 @@ class KnowledgeGraphService:
     """Extracts entities & relationships from text and persists to Neo4j."""
 
     def __init__(self) -> None:
-        if settings.gemini_api_key:
-            self.gemini = genai.Client(api_key=settings.gemini_api_key)
+        if settings.openai_api_key:
+            self.models = AIModelClient()
         else:
-            self.gemini = None
+            self.models = None
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -65,8 +63,8 @@ class KnowledgeGraphService:
         Extract entities/relationships from chunks and merge into Neo4j.
         Returns counts: {"nodes": N, "edges": M}.
         """
-        if not self.gemini:
-            logger.warning("No Gemini API key – skipping graph extraction.")
+        if not self.models:
+            logger.warning("No OPENAI_API_KEY configured - skipping graph extraction.")
             return {"nodes": 0, "edges": 0}
 
         all_entities: List[Dict[str, str]] = []
@@ -114,18 +112,20 @@ class KnowledgeGraphService:
     async def _extract_from_chunk(
         self, text: str
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
-        """Call Gemini to extract entities and relationships from a single chunk."""
-        response = await self.gemini.aio.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=f"Extract entities and relationships from this text:\n\n{text}",
-            config=types.GenerateContentConfig(
-                system_instruction=EXTRACTION_SYSTEM_PROMPT,
-                temperature=0.0,
-                response_mime_type="application/json",
-            ),
+        """Call the configured AI model to extract entities and relationships from a single chunk."""
+        raw = await self.models.chat_completion(
+            messages=[
+                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"Extract entities and relationships from this text:\n\n{text}",
+                },
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
         )
 
-        raw = response.text.strip()
+        raw = raw.strip()
 
         # Parse JSON (handle possible markdown fences)
         if raw.startswith("```"):
