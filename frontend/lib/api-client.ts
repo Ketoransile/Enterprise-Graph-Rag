@@ -41,6 +41,7 @@ export async function apiFetch<T>(
 // Types based on backend schemas
 export interface Document {
   id: string;
+  document_id?: string;
   title: string;
   description: string | null;
   file_name: string;

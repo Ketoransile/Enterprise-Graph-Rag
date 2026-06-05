@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import {
   Dialog,
@@ -16,13 +16,11 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { api, type Chunk, type Document } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 
-export default function DocumentDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default function DocumentDetailPage() {
   const { token } = useAuth();
   const router = useRouter();
+  const params = useParams<{ id?: string | string[] }>();
+  const documentId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [doc, setDoc] = useState<Document | null>(null);
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [chunkFilter, setChunkFilter] = useState("");
@@ -41,10 +39,15 @@ export default function DocumentDetailPage({
       }
       setLoading(true);
       setError(null);
+      if (!documentId) {
+        setError("Document id is missing from the current route.");
+        setLoading(false);
+        return;
+      }
       try {
         const [d, c] = await Promise.all([
-          api.documents.get(params.id, token),
-          api.documents.chunks(params.id, token),
+          api.documents.get(documentId, token),
+          api.documents.chunks(documentId, token),
         ]);
         setDoc(d);
         setChunks(c);
@@ -57,7 +60,7 @@ export default function DocumentDetailPage({
       }
     }
     load();
-  }, [token, params.id]);
+  }, [token, documentId]);
 
   async function handleUpdate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

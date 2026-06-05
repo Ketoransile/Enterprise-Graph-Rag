@@ -25,6 +25,10 @@ interface CreateForm {
   security_level: string;
 }
 
+function getDocumentId(doc: Document) {
+  return doc.id || doc.document_id || "";
+}
+
 export default function DocumentsPage() {
   const { token } = useAuth();
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -347,15 +351,21 @@ export default function DocumentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {documents.map((doc) => (
-                <tr key={doc.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/30 transition">
+              {documents.map((doc) => {
+                const documentId = getDocumentId(doc);
+                return (
+                <tr key={documentId || doc.file_name} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/30 transition">
                   <td className="px-4 py-3 text-black dark:text-neutral-200 font-medium">
-                    <Link
-                      href={`/documents/${doc.id}` as any}
-                      className="hover:underline"
-                    >
-                      {doc.title}
-                    </Link>
+                    {documentId ? (
+                      <Link
+                        href={`/documents/${documentId}` as any}
+                        className="hover:underline"
+                      >
+                        {doc.title}
+                      </Link>
+                    ) : (
+                      doc.title
+                    )}
                   </td>
                   <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">{doc.file_type}</td>
                   <td className="px-4 py-3 text-neutral-600 dark:text-neutral-400">
@@ -372,8 +382,13 @@ export default function DocumentsPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <Link
-                        href={`/documents/${doc.id}` as any}
-                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-2.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-900"
+                        href={`/documents/${documentId}` as any}
+                        aria-disabled={!documentId}
+                        className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-neutral-200 px-2.5 text-xs font-medium transition dark:border-neutral-800 ${
+                          documentId
+                            ? "text-neutral-700 hover:bg-neutral-50 dark:text-neutral-200 dark:hover:bg-neutral-900"
+                            : "pointer-events-none text-neutral-400 opacity-50 dark:text-neutral-600"
+                        }`}
                       >
                         <RiEyeLine className="h-4 w-4" />
                         View
@@ -389,7 +404,8 @@ export default function DocumentsPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
