@@ -1,10 +1,13 @@
 import json
+import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 import httpx
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AIModelError(RuntimeError):
@@ -46,8 +49,25 @@ class AIModelClient:
             stream=False,
         )
 
-        response = await self._post_json("/v1/responses", body)
-        text = self._extract_response_text(response)
+        try:
+            response = await self._post_json("/v1/responses", body)
+            text = self._extract_response_text(response)
+        except AIModelError as responses_err:
+            logger.warning(
+                "Responses API chat call failed; falling back to chat completions: %s",
+                responses_err,
+            )
+            response = await self._post_json(
+                "/v1/chat/completions",
+                self._chat_completions_body(
+                    messages=messages,
+                    temperature=temperature,
+                    response_format=response_format,
+                    max_tokens=max_tokens,
+                    stream=False,
+                ),
+            )
+            text = self._extract_chat_completion_text(response)
         if not text:
             raise AIModelError("AI model provider returned no response text.")
         return text
@@ -66,20 +86,22 @@ class AIModelClient:
             stream=True,
         )
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST",
-                self._url("/v1/responses"),
-                headers=self.headers,
-                json=body,
-            ) as response:
-                if response.status_code >= 400:
-                    await self._raise_stream_error(response)
-
-                async for line in response.aiter_lines():
-                    chunk = self._parse_stream_line(line)
-                    if chunk:
-                        yield chunk
+        try:
+            async for chunk in self._stream_json("/v1/responses", body):
+                yield chunk
+        except AIModelError as responses_err:
+            logger.warning(
+                "Responses API stream failed; falling back to chat completions: %s",
+                responses_err,
+            )
+            chat_body = self._chat_completions_body(
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+            async for chunk in self._stream_json("/v1/chat/completions", chat_body):
+                yield chunk
 
     async def embed(self, inputs: str | Sequence[str]) -> list[list[float]]:
         if not settings.openai_embeddings_enabled:
@@ -133,6 +155,27 @@ class AIModelClient:
             body["text"] = {"format": response_format}
         return body
 
+    def _chat_completions_body(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        temperature: float,
+        stream: bool,
+        response_format: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stream": stream,
+            "temperature": temperature,
+        }
+        if max_tokens:
+            body["max_tokens"] = max_tokens
+        if response_format:
+            body["response_format"] = response_format
+        return body
+
     @staticmethod
     def _split_messages(messages: list[dict[str, str]]) -> tuple[str, str]:
         instructions: list[str] = []
@@ -167,6 +210,22 @@ class AIModelClient:
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
 
+    async def _stream_json(self, path: str, body: dict[str, Any]) -> AsyncIterator[str]:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream(
+                "POST",
+                self._url(path),
+                headers=self.headers,
+                json=body,
+            ) as response:
+                if response.status_code >= 400:
+                    await self._raise_stream_error(response)
+
+                async for line in response.aiter_lines():
+                    chunk = self._parse_stream_line(line)
+                    if chunk:
+                        yield chunk
+
     async def _raise_stream_error(self, response: httpx.Response) -> None:
         raw = await response.aread()
         text = raw.decode("utf-8", errors="replace")
@@ -188,6 +247,18 @@ class AIModelClient:
                 text = content.get("text")
                 if isinstance(text, str):
                     chunks.append(text)
+        return "".join(chunks)
+
+    @staticmethod
+    def _extract_chat_completion_text(response: dict[str, Any]) -> str:
+        chunks: list[str] = []
+        for choice in response.get("choices", []):
+            if not isinstance(choice, dict):
+                continue
+            message = choice.get("message") or {}
+            content = message.get("content")
+            if isinstance(content, str):
+                chunks.append(content)
         return "".join(chunks)
 
     @staticmethod

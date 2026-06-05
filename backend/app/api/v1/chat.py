@@ -39,7 +39,6 @@ async def chat_stream(
             detail="AI model API key not configured. Set OPENAI_API_KEY.",
         )
 
-    client = AIModelClient()
     retrieval_service = RetrievalService()
 
     async def event_generator() -> AsyncGenerator[str, None]:
@@ -50,6 +49,8 @@ async def chat_stream(
         num_chunks_after_rbac = 0
 
         try:
+            client = AIModelClient()
+
             # 1. Retrieve Context
             search_res = await retrieval_service.hybrid_search(
                 payload, tenant_id=get_default_tenant_id(), user_id=auth.user_id
@@ -135,7 +136,7 @@ async def chat_stream(
             await db.commit()
 
         except Exception as e:
-            logger.error(f"Chat stream error: {e}")
+            logger.exception("Chat stream error")
 
             # ── Audit log: failed query ──────────────────────────
             try:
