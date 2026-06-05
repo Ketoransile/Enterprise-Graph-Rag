@@ -15,13 +15,8 @@ import {
 } from "lucide-react";
 
 import { AuthSplitLayout } from "@/components/marketing/AuthSplitLayout";
-import { apiFetch } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
-
-interface TokenResponse {
-  access_token: string;
-  token_type: string;
-}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -38,15 +33,7 @@ export default function RegisterPage() {
     setError(null);
     setLoading(true);
     try {
-      const data = await apiFetch<TokenResponse>("/api/v1/auth/register", {
-        method: "POST",
-        body: JSON.stringify({
-          email,
-          password,
-          full_name: fullName || undefined,
-        }),
-      });
-      localStorage.setItem("token", data.access_token);
+      const data = await api.auth.register(email, password, fullName || undefined);
       setAuth(data.access_token);
       router.push("/dashboard");
     } catch (err) {

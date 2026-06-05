@@ -1,3 +1,5 @@
+import { AUTH_COOKIE_NAME, AUTH_REDIRECT_PARAM, getSafeRedirectPath } from "@/lib/auth-cookie";
+
 export const API_BASE: string = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 type ApiFetchOptions = RequestInit & { token?: string };
@@ -27,6 +29,22 @@ function getApiErrorMessage(status: number, text: string): string {
   return text;
 }
 
+function redirectToLogin() {
+  if (typeof window === "undefined") return;
+
+  localStorage.removeItem("token");
+  document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0; samesite=lax`;
+
+  const currentPath = `${window.location.pathname}${window.location.search}`;
+  const loginUrl = new URL("/login", window.location.origin);
+  const nextPath = getSafeRedirectPath(currentPath, "");
+  if (nextPath && currentPath !== "/login" && currentPath !== "/register") {
+    loginUrl.searchParams.set(AUTH_REDIRECT_PARAM, nextPath);
+  }
+
+  window.location.replace(loginUrl.toString());
+}
+
 export async function apiFetch<T>(
   path: string,
   options: ApiFetchOptions = {},
@@ -44,6 +62,9 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 401 && token) {
+      redirectToLogin();
+    }
     throw new ApiError(getApiErrorMessage(res.status, text), res.status, text);
   }
 
@@ -264,6 +285,9 @@ export const api = {
 
       if (!res.ok) {
         const text = await res.text();
+        if (res.status === 401) {
+          redirectToLogin();
+        }
         throw new ApiError(getApiErrorMessage(res.status, text), res.status, text);
       }
 

@@ -7,14 +7,16 @@ import { AlertCircle, ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from "lucide-
 
 import { AuthSplitLayout } from "@/components/marketing/AuthSplitLayout";
 import { api } from "@/lib/api-client";
+import { AUTH_REDIRECT_PARAM, getSafeRedirectPath } from "@/lib/auth-cookie";
 import { useAuth } from "@/lib/auth-context";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { setAuth } = useAuth();
+  const { ready, setAuth, token } = useAuth();
   const oauthStatus = searchParams.get("oauth");
   const queryError = searchParams.get("error");
+  const nextPath = getSafeRedirectPath(searchParams.get(AUTH_REDIRECT_PARAM));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +24,11 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
+    if (ready && token && oauthStatus !== "success") {
+      router.replace(nextPath as any);
+      return;
+    }
+
     if (oauthStatus === "success") {
       let ignore = false;
 
@@ -32,7 +39,7 @@ function LoginForm() {
           const data = await api.auth.googleComplete();
           if (ignore) return;
           setAuth(data.access_token);
-          router.replace("/dashboard");
+          router.replace(nextPath as any);
         } catch {
           if (!ignore) {
             setError("Google sign-in could not be completed. Please try again.");
@@ -53,7 +60,7 @@ function LoginForm() {
       setError(queryError);
       router.replace("/login");
     }
-  }, [oauthStatus, queryError, router, setAuth]);
+  }, [nextPath, oauthStatus, queryError, ready, router, setAuth, token]);
 
   const handleGoogle = async () => {
     try {
@@ -71,7 +78,7 @@ function LoginForm() {
     try {
       const data = await api.auth.login(email, password);
       setAuth(data.access_token);
-      router.replace("/dashboard");
+      router.replace(nextPath as any);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
