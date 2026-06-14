@@ -4,9 +4,9 @@
   "private": true,
   "description": "Next.js App Router frontend for the multi-tenant Graph-RAG platform",
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build",
-    "start": "next start",
+    "dev": "node init && next dev --webpack",
+    "build": "node init && next build",
+    "start": "node init && next start",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "echo \"TODO: add Playwright/RTL tests\" && exit 0"

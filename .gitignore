@@ -21,7 +21,6 @@ share/python-wheels/
 MANIFEST
 
 # Virtual Environment
-.env
 .venv
 env/
 venv/
@@ -43,7 +42,6 @@ dist/
 
 # IDEs
 .idea/
-.vscode/
 *.swp
 *.swo
 
@@ -52,3 +50,8 @@ dist/
 
 # Uploads
 uploads/
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
+config.bat
