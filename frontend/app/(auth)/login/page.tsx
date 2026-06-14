@@ -10,6 +10,9 @@ import { api } from "@/lib/api-client";
 import { AUTH_REDIRECT_PARAM, getSafeRedirectPath } from "@/lib/auth-cookie";
 import { useAuth } from "@/lib/auth-context";
 
+const DEMO_ADMIN_EMAIL = "admin@example.com";
+const DEMO_ADMIN_PASSWORD = "ChangeMe123!";
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -17,8 +20,8 @@ function LoginForm() {
   const oauthStatus = searchParams.get("oauth");
   const queryError = searchParams.get("error");
   const nextPath = getSafeRedirectPath(searchParams.get(AUTH_REDIRECT_PARAM));
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(DEMO_ADMIN_EMAIL);
+  const [password, setPassword] = useState(DEMO_ADMIN_PASSWORD);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
